@@ -13,6 +13,8 @@ SyncDub MVP es una aplicación web que utiliza inteligencia artificial local par
 - **🔄 Procesamiento Asíncrono**: Interfaz web con indicadores de progreso en tiempo real
 - **💾 Sin APIs Externas**: Todo el procesamiento se realiza localmente
 
+![Pantalla Principal](docs/captura0.png)
+
 ## 🚀 Inicio Rápido
 
 ### Prerrequisitos
