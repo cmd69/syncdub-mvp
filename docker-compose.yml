@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  syncdub-app:
+    build: .
+    container_name: syncdub-mvp
+    ports:
+      - "5000:5000"
+    volumes:
+      - ${UPLOADS_DIR}:/app/uploads
+      - ${OUTPUT_DIR}:/app/output
+      - ${MODELS_DIR}:/app/models
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  uploads:
+  output:
+  models:
