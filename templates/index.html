@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}SyncDub MVP - Sincronizador de Audio{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <!-- Hero Section -->
+        <div class="text-center mb-5">
+            <h1 class="display-4 fw-bold text-primary mb-3">
+                <i class="fas fa-sync-alt me-3"></i>
+                SyncDub MVP
+            </h1>
+            <p class="lead text-muted mb-4">
+                Sincroniza automáticamente las pistas de audio entre versiones originales y dobladas de películas
+                usando inteligencia artificial local.
+            </p>
+            <a href="{{ url_for('main.upload') }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-upload me-2"></i>
+                Comenzar Sincronización
+            </a>
+        </div>
+
+        <!-- Features -->
+        <div class="row g-4 mb-5">
+            <div class="col-md-4">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body text-center">
+                        <div class="text-primary mb-3">
+                            <i class="fas fa-robot fa-3x"></i>
+                        </div>
+                        <h5 class="card-title">IA Local</h5>
+                        <p class="card-text text-muted">
+                            Procesamiento completamente local usando Whisper y modelos de embeddings semánticos.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body text-center">
+                        <div class="text-success mb-3">
+                            <i class="fas fa-language fa-3x"></i>
+                        </div>
+                        <h5 class="card-title">Multilingüe</h5>
+                        <p class="card-text text-muted">
+                            Soporte para múltiples idiomas con emparejamiento semántico inteligente.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body text-center">
+                        <div class="text-info mb-3">
+                            <i class="fas fa-film fa-3x"></i>
+                        </div>
+                        <h5 class="card-title">Formato MKV</h5>
+                        <p class="card-text text-muted">
+                            Genera archivos MKV con múltiples pistas de audio sincronizadas.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- How it works -->
+        <div class="card border-0 shadow-sm mb-5">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-cogs me-2"></i>
+                    ¿Cómo funciona?
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6 col-lg-3">
+                        <div class="text-center">
+                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style="width: 50px; height: 50px;">
+                                1
+                            </div>
+                            <h6>Subir Videos</h6>
+                            <small class="text-muted">Sube la versión original y doblada</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-3">
+                        <div class="text-center">
+                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style="width: 50px; height: 50px;">
+                                2
+                            </div>
+                            <h6>Transcripción</h6>
+                            <small class="text-muted">IA transcribe ambos audios</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-3">
+                        <div class="text-center">
+                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style="width: 50px; height: 50px;">
+                                3
+                            </div>
+                            <h6>Emparejamiento</h6>
+                            <small class="text-muted">Encuentra frases equivalentes</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6 col-lg-3">
+                        <div class="text-center">
+                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style="width: 50px; height: 50px;">
+                                4
+                            </div>
+                            <h6>Sincronización</h6>
+                            <small class="text-muted">Genera archivo final</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Supported formats -->
+        <div class="alert alert-info">
+            <h6 class="alert-heading">
+                <i class="fas fa-info-circle me-2"></i>
+                Formatos Soportados
+            </h6>
+            <p class="mb-0">
+                <strong>Entrada:</strong> MP4, AVI, MKV, MOV, WMV, FLV, WebM<br>
+                <strong>Salida:</strong> MKV con múltiples pistas de audio
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

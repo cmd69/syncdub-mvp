@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Subir Videos - SyncDub MVP{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card border-0 shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-upload me-2"></i>
+                    Subir Videos para Sincronización
+                </h4>
+            </div>
+            <div class="card-body p-4">
+                <!-- Upload Form -->
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="row g-4">
+                        <!-- Original Video -->
+                        <div class="col-md-6">
+                            <label for="originalVideo" class="form-label fw-bold">
+                                <i class="fas fa-film me-2 text-primary"></i>
+                                Video Original
+                            </label>
+                            <div class="upload-area" id="originalUploadArea">
+                                <input type="file" class="form-control" id="originalVideo" name="original_video" 
+                                       accept=".mp4,.avi,.mkv,.mov,.wmv,.flv,.webm" required>
+                                <div class="upload-placeholder">
+                                    <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                                    <p class="text-muted mb-0">Selecciona el video original</p>
+                                    <small class="text-muted">MP4, AVI, MKV, MOV, WMV, FLV, WebM</small>
+                                </div>
+                                <div class="file-info d-none">
+                                    <i class="fas fa-file-video me-2 text-success"></i>
+                                    <span class="filename"></span>
+                                    <small class="filesize text-muted ms-2"></small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Dubbed Video -->
+                        <div class="col-md-6">
+                            <label for="dubbedVideo" class="form-label fw-bold">
+                                <i class="fas fa-film me-2 text-success"></i>
+                                Video Doblado
+                            </label>
+                            <div class="upload-area" id="dubbedUploadArea">
+                                <input type="file" class="form-control" id="dubbedVideo" name="dubbed_video" 
+                                       accept=".mp4,.avi,.mkv,.mov,.wmv,.flv,.webm" required>
+                                <div class="upload-placeholder">
+                                    <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                                    <p class="text-muted mb-0">Selecciona el video doblado</p>
+                                    <small class="text-muted">MP4, AVI, MKV, MOV, WMV, FLV, WebM</small>
+                                </div>
+                                <div class="file-info d-none">
+                                    <i class="fas fa-file-video me-2 text-success"></i>
+                                    <span class="filename"></span>
+                                    <small class="filesize text-muted ms-2"></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <div class="text-center mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                            <i class="fas fa-sync-alt me-2"></i>
+                            Iniciar Sincronización
+                        </button>
+                    </div>
+                </form>
+                
+                <!-- Progress Section -->
+                <div id="progressSection" class="d-none mt-4">
+                    <div class="alert alert-info">
+                        <h6 class="alert-heading">
+                            <i class="fas fa-cogs me-2"></i>
+                            Procesando...
+                        </h6>
+                        <div class="progress mb-2">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="progressBar" role="progressbar" style="width: 0%">
+                            </div>
+                        </div>
+                        <p class="mb-0" id="progressMessage">Iniciando procesamiento...</p>
+                    </div>
+                </div>
+                
+                <!-- Result Section -->
+                <div id="resultSection" class="d-none mt-4">
+                    <div class="alert alert-success">
+                        <h6 class="alert-heading">
+                            <i class="fas fa-check-circle me-2"></i>
+                            ¡Sincronización Completada!
+                        </h6>
+                        <p class="mb-3">El archivo ha sido procesado exitosamente.</p>
+                        <a href="#" class="btn btn-success" id="downloadBtn">
+                            <i class="fas fa-download me-2"></i>
+                            Descargar Archivo Sincronizado
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Error Section -->
+                <div id="errorSection" class="d-none mt-4">
+                    <div class="alert alert-danger">
+                        <h6 class="alert-heading">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Error en el Procesamiento
+                        </h6>
+                        <p class="mb-0" id="errorMessage">Ha ocurrido un error durante el procesamiento.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Instructions -->
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Instrucciones
+                </h6>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        Asegúrate de que ambos videos contengan la misma película
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        Los archivos pueden ser de diferentes formatos
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        El procesamiento puede tomar varios minutos dependiendo del tamaño
+                    </li>
+                    <li class="mb-0">
+                        <i class="fas fa-check text-success me-2"></i>
+                        El archivo final incluirá ambas pistas de audio sincronizadas
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+{% endblock %}
+

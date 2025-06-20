@@ -1,0 +1,33 @@
+# Web Framework
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# Audio/Video Processing
+ffmpeg-python==0.2.0
+pydub==0.25.1
+moviepy==1.0.3
+
+# AI/ML Libraries
+openai-whisper==20231117
+sentence-transformers==2.2.2
+torch==2.1.0
+torchaudio==2.1.0
+transformers==4.35.0
+
+# Scientific Computing
+numpy==1.24.3
+scipy==1.11.4
+scikit-learn==1.3.2
+
+# Utilities
+python-dotenv==1.0.0
+tqdm==4.66.1
+requests==2.31.0
+
+# File handling
+python-magic==0.4.27
+
+# Progress tracking
+celery==5.3.4
+redis==5.0.1
+

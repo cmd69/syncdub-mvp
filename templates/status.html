@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Estado del Procesamiento - SyncDub MVP{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card border-0 shadow">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-clock me-2"></i>
+                    Estado del Procesamiento
+                </h4>
+            </div>
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <div class="spinner-border text-primary" role="status" id="loadingSpinner">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <h5 class="mt-3" id="statusTitle">Procesando...</h5>
+                    <p class="text-muted" id="taskId">ID de Tarea: {{ task_id }}</p>
+                </div>
+                
+                <!-- Progress -->
+                <div class="mb-4">
+                    <div class="progress mb-2">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             id="progressBar" role="progressbar" style="width: 0%">
+                        </div>
+                    </div>
+                    <p class="text-center mb-0" id="progressMessage">Iniciando procesamiento...</p>
+                </div>
+                
+                <!-- Status Details -->
+                <div class="row g-3" id="statusDetails">
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <i class="fas fa-upload fa-2x text-muted mb-2"></i>
+                                <h6>Archivos Subidos</h6>
+                                <span class="badge bg-success" id="uploadStatus">Completado</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <i class="fas fa-robot fa-2x text-muted mb-2"></i>
+                                <h6>Procesamiento IA</h6>
+                                <span class="badge bg-warning" id="aiStatus">En Progreso</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Actions -->
+                <div class="text-center mt-4">
+                    <button class="btn btn-outline-primary me-2" onclick="location.reload()">
+                        <i class="fas fa-sync-alt me-2"></i>
+                        Actualizar Estado
+                    </button>
+                    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-home me-2"></i>
+                        Volver al Inicio
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const taskId = '{{ task_id }}';
+    
+    function updateStatus() {
+        fetch(`/api/status/${taskId}`)
+            .then(response => response.json())
+            .then(data => {
+                const progressBar = document.getElementById('progressBar');
+                const progressMessage = document.getElementById('progressMessage');
+                const statusTitle = document.getElementById('statusTitle');
+                const loadingSpinner = document.getElementById('loadingSpinner');
+                
+                progressBar.style.width = `${data.progress || 0}%`;
+                progressBar.textContent = `${data.progress || 0}%`;
+                progressMessage.textContent = data.message || 'Procesando...';
+                
+                if (data.status === 'completed') {
+                    statusTitle.textContent = '¡Completado!';
+                    loadingSpinner.classList.add('d-none');
+                    progressBar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+                    progressBar.classList.add('bg-success');
+                    
+                    // Redirect to result page
+                    setTimeout(() => {
+                        window.location.href = `/result/${taskId}`;
+                    }, 2000);
+                } else if (data.status === 'error') {
+                    statusTitle.textContent = 'Error';
+                    loadingSpinner.classList.add('d-none');
+                    progressBar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+                    progressBar.classList.add('bg-danger');
+                    progressMessage.textContent = data.error || 'Ha ocurrido un error';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+    }
+    
+    // Update status every 2 seconds
+    const statusInterval = setInterval(updateStatus, 2000);
+    
+    // Initial update
+    updateStatus();
+</script>
+{% endblock %}
+

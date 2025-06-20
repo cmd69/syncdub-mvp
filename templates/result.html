@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Resultado - SyncDub MVP{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card border-0 shadow">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-check-circle me-2"></i>
+                    Sincronización Completada
+                </h4>
+            </div>
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <i class="fas fa-check-circle fa-4x text-success mb-3"></i>
+                    <h5>¡Procesamiento Exitoso!</h5>
+                    <p class="text-muted">Tu archivo ha sido sincronizado correctamente.</p>
+                </div>
+                
+                <!-- Task Info -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-id-card me-2"></i>
+                                    ID de Tarea
+                                </h6>
+                                <p class="card-text font-monospace">{{ task_id }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-clock me-2"></i>
+                                    Estado
+                                </h6>
+                                <span class="badge bg-success fs-6">Completado</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Download Section -->
+                <div class="text-center mb-4">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <h6 class="card-title text-success">
+                                <i class="fas fa-download me-2"></i>
+                                Archivo Listo para Descarga
+                            </h6>
+                            <p class="card-text">
+                                El archivo MKV contiene el video original con ambas pistas de audio sincronizadas.
+                            </p>
+                            <a href="/api/download/{{ task_id }}" class="btn btn-success btn-lg" id="downloadBtn">
+                                <i class="fas fa-download me-2"></i>
+                                Descargar Archivo Sincronizado
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- File Info -->
+                <div class="card bg-light mb-4">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Información del Archivo
+                        </h6>
+                        <ul class="list-unstyled mb-0">
+                            <li><strong>Formato:</strong> MKV (Matroska Video)</li>
+                            <li><strong>Video:</strong> Copia del original (sin recodificación)</li>
+                            <li><strong>Audio:</strong> Pista original + Pista doblada sincronizada</li>
+                            <li><strong>Compatibilidad:</strong> VLC, MPC-HC, Kodi, Plex</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- Actions -->
+                <div class="text-center">
+                    <a href="{{ url_for('main.upload') }}" class="btn btn-primary me-2">
+                        <i class="fas fa-plus me-2"></i>
+                        Procesar Otra Película
+                    </a>
+                    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-home me-2"></i>
+                        Volver al Inicio
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tips -->
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    Consejos de Reproducción
+                </h6>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2">
+                        <i class="fas fa-play text-primary me-2"></i>
+                        <strong>VLC:</strong> Ve a Audio → Pista de Audio para cambiar entre pistas
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-play text-primary me-2"></i>
+                        <strong>Kodi:</strong> Durante la reproducción, presiona 'L' para cambiar audio
+                    </li>
+                    <li class="mb-0">
+                        <i class="fas fa-play text-primary me-2"></i>
+                        <strong>Plex:</strong> Haz clic en el ícono de configuración durante la reproducción
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Track download clicks
+    document.getElementById('downloadBtn').addEventListener('click', function() {
+        // Optional: Add analytics or tracking here
+        console.log('Download initiated for task: {{ task_id }}');
+    });
+</script>
+{% endblock %}
+
