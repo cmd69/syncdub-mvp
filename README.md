@@ -4,6 +4,10 @@
 
 SyncDub MVP es una aplicación web que utiliza inteligencia artificial local para sincronizar automáticamente las pistas de audio entre versiones originales y dobladas de películas. La aplicación procesa ambos videos, transcribe los audios, empareja las frases por significado semántico y genera un archivo MKV final con ambas pistas de audio sincronizadas.
 
+![Pantalla Principal](docs/captura0.png)
+
+![Procesamiento Videos](docs/captura1.png)
+
 ## ✨ Características Principales
 
 - **🤖 IA Local**: Procesamiento completamente local usando Whisper y sentence-transformers
@@ -12,8 +16,6 @@ SyncDub MVP es una aplicación web que utiliza inteligencia artificial local par
 - **📦 Containerizado**: Fácil despliegue con Docker
 - **🔄 Procesamiento Asíncrono**: Interfaz web con indicadores de progreso en tiempo real
 - **💾 Sin APIs Externas**: Todo el procesamiento se realiza localmente
-
-![Pantalla Principal](docs/captura0.png)
 
 ## 🚀 Inicio Rápido
 
