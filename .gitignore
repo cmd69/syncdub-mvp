@@ -1,0 +1,6 @@
+.env
+__pycache__
+__pcache__/*
+venv
+output
+models
