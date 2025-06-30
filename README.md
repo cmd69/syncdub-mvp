@@ -210,7 +210,7 @@ docker stats syncdub-mvp
 
 ## 🚧 Limitaciones Actuales
 
-- **Tamaño de archivo**: Máximo 2GB por video
+- **Tamaño de archivo**: Máximo 8GB por video
 - **Formatos de salida**: Solo MKV
 - **Procesamiento**: Secuencial (un video a la vez)
 - **Persistencia**: Las tareas no persisten entre reinicios

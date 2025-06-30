@@ -1,16 +1,14 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}SyncDub MVP{% endblock %}</title>
     
     <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    
     <!-- Custom CSS -->
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
     
@@ -21,12 +19,14 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('main.index') }}">
-                <i class="fas fa-sync-alt me-2"></i>
+                <i class="fas fa-film me-2"></i>
                 SyncDub MVP
             </a>
+            
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
+            
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
@@ -39,10 +39,29 @@
                             <i class="fas fa-upload me-1"></i>Subir Videos
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('main.about') }}">
+                            <i class="fas fa-info-circle me-1"></i>Acerca de
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>
     </nav>
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1055;">
+        <div id="notification-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <i id="toast-icon" class="fas fa-info-circle text-primary me-2"></i>
+                <strong id="toast-title" class="me-auto">Notificación</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div id="toast-body" class="toast-body">
+                Mensaje de notificación
+            </div>
+        </div>
+    </div>
 
     <!-- Main Content -->
     <main class="container my-4">
@@ -51,17 +70,29 @@
 
     <!-- Footer -->
     <footer class="bg-light py-4 mt-5">
-        <div class="container text-center">
-            <p class="mb-0 text-muted">
-                <i class="fas fa-sync-alt me-2"></i>
-                SyncDub MVP - Sincronizador de audio para películas dobladas
-            </p>
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="text-primary">
+                        <i class="fas fa-film me-2"></i>
+                        SyncDub MVP
+                    </h6>
+                    <p class="text-muted small mb-0">
+                        Sincronización inteligente de audio entre versiones originales y dobladas
+                    </p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p class="text-muted small mb-0">
+                        <i class="fas fa-robot me-1"></i>
+                        Powered by OpenAI Whisper & Sentence Transformers
+                    </p>
+                </div>
+            </div>
         </div>
     </footer>
 
     <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Custom JS -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     

@@ -2,17 +2,28 @@ version: '3.8'
 
 services:
   syncdub-app:
-    build: .
+    build:
+      context: .
+      args:
+        PUID: ${PUID:-1000}
+        PGID: ${PGID:-1000}
     container_name: syncdub-mvp
     ports:
-      - "5000:5000"
+      - "${APP_PORT:-5000}:5000"
     volumes:
-      - ${UPLOADS_DIR}:/app/uploads
-      - ${OUTPUT_DIR}:/app/output
-      - ${MODELS_DIR}:/app/models
+      # Application data volumes
+      - ${UPLOADS_DIR:-./uploads}:/app/uploads
+      - ${OUTPUT_DIR:-./output}:/app/output
+      - ${MODELS_DIR:-./models}:/app/models
+      # Media source volume (NFS mount point)
+      - ${MEDIA_SOURCE_PATH:-./media}:/app/media
     environment:
-      - FLASK_ENV=production
-      - SECRET_KEY=${SECRET_KEY}
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - SECRET_KEY=${SECRET_KEY:-syncdub-secret-key-2024}
+      - MEDIA_SOURCE_PATH=/app/media
+      - MEDIA_SOURCE_ENABLED=${MEDIA_SOURCE_ENABLED:-false}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/"]
@@ -20,8 +31,16 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - arr_stack
+
+networks:
+  arr_stack:
+    external: true
 
 volumes:
   uploads:
   output:
   models:
+  media:
+

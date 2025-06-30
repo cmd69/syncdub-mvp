@@ -1,24 +1,29 @@
 {% extends "base.html" %}
 
-{% block title %}SyncDub MVP - Sincronizador de Audio{% endblock %}
+{% block title %}Inicio - SyncDub MVP{% endblock %}
 
 {% block content %}
 <div class="row">
-    <div class="col-lg-8 mx-auto">
+    <div class="col-lg-8 mx-auto text-center">
         <!-- Hero Section -->
-        <div class="text-center mb-5">
-            <h1 class="display-4 fw-bold text-primary mb-3">
-                <i class="fas fa-sync-alt me-3"></i>
+        <div class="hero-section mb-5">
+            <h1 class="display-4 text-primary mb-3">
+                <i class="fas fa-film me-3"></i>
                 SyncDub MVP
             </h1>
             <p class="lead text-muted mb-4">
-                Sincroniza automáticamente las pistas de audio entre versiones originales y dobladas de películas
-                usando inteligencia artificial local.
+                Sincronización inteligente de audio entre versiones originales y dobladas de películas
             </p>
-            <a href="{{ url_for('main.upload') }}" class="btn btn-primary btn-lg">
-                <i class="fas fa-upload me-2"></i>
-                Comenzar Sincronización
-            </a>
+            <div class="d-grid gap-2 d-md-block">
+                <a href="{{ url_for('main.upload') }}" class="btn btn-primary btn-lg">
+                    <i class="fas fa-upload me-2"></i>
+                    Comenzar Sincronización
+                </a>
+                <a href="{{ url_for('main.about') }}" class="btn btn-outline-secondary btn-lg">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Más Información
+                </a>
+            </div>
         </div>
 
         <!-- Features -->
@@ -26,106 +31,122 @@
             <div class="col-md-4">
                 <div class="card h-100 border-0 shadow-sm">
                     <div class="card-body text-center">
-                        <div class="text-primary mb-3">
-                            <i class="fas fa-robot fa-3x"></i>
+                        <div class="feature-icon mb-3">
+                            <i class="fas fa-microphone-alt fa-3x text-primary"></i>
                         </div>
-                        <h5 class="card-title">IA Local</h5>
+                        <h5 class="card-title">Transcripción IA</h5>
                         <p class="card-text text-muted">
-                            Procesamiento completamente local usando Whisper y modelos de embeddings semánticos.
+                            Utiliza OpenAI Whisper para transcribir automáticamente el audio de ambas versiones
                         </p>
                     </div>
                 </div>
             </div>
+            
             <div class="col-md-4">
                 <div class="card h-100 border-0 shadow-sm">
                     <div class="card-body text-center">
-                        <div class="text-success mb-3">
-                            <i class="fas fa-language fa-3x"></i>
+                        <div class="feature-icon mb-3">
+                            <i class="fas fa-brain fa-3x text-success"></i>
                         </div>
-                        <h5 class="card-title">Multilingüe</h5>
+                        <h5 class="card-title">Emparejamiento Semántico</h5>
                         <p class="card-text text-muted">
-                            Soporte para múltiples idiomas con emparejamiento semántico inteligente.
+                            Sentence Transformers para encontrar correspondencias inteligentes entre diálogos
                         </p>
                     </div>
                 </div>
             </div>
+            
             <div class="col-md-4">
                 <div class="card h-100 border-0 shadow-sm">
                     <div class="card-body text-center">
-                        <div class="text-info mb-3">
-                            <i class="fas fa-film fa-3x"></i>
+                        <div class="feature-icon mb-3">
+                            <i class="fas fa-sync-alt fa-3x text-warning"></i>
                         </div>
-                        <h5 class="card-title">Formato MKV</h5>
+                        <h5 class="card-title">Sincronización Automática</h5>
                         <p class="card-text text-muted">
-                            Genera archivos MKV con múltiples pistas de audio sincronizadas.
+                            Calcula y aplica automáticamente el desfase temporal para perfecta sincronización
                         </p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- How it works -->
-        <div class="card border-0 shadow-sm mb-5">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">
-                    <i class="fas fa-cogs me-2"></i>
-                    ¿Cómo funciona?
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row g-3">
-                    <div class="col-md-6 col-lg-3">
-                        <div class="text-center">
-                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style="width: 50px; height: 50px;">
-                                1
-                            </div>
-                            <h6>Subir Videos</h6>
-                            <small class="text-muted">Sube la versión original y doblada</small>
-                        </div>
+        <!-- Media Source Status -->
+        <div class="row">
+            <div class="col-md-8 mx-auto">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">
+                            <i class="fas fa-server me-2"></i>
+                            Estado del Volumen de Media
+                        </h6>
                     </div>
-                    <div class="col-md-6 col-lg-3">
-                        <div class="text-center">
-                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style="width: 50px; height: 50px;">
-                                2
+                    <div class="card-body">
+                        <div id="media-status-container">
+                            <div class="d-flex align-items-center">
+                                <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                                    <span class="visually-hidden">Verificando...</span>
+                                </div>
+                                <span class="text-muted">Verificando disponibilidad del volumen...</span>
                             </div>
-                            <h6>Transcripción</h6>
-                            <small class="text-muted">IA transcribe ambos audios</small>
-                        </div>
-                    </div>
-                    <div class="col-md-6 col-lg-3">
-                        <div class="text-center">
-                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style="width: 50px; height: 50px;">
-                                3
-                            </div>
-                            <h6>Emparejamiento</h6>
-                            <small class="text-muted">Encuentra frases equivalentes</small>
-                        </div>
-                    </div>
-                    <div class="col-md-6 col-lg-3">
-                        <div class="text-center">
-                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style="width: 50px; height: 50px;">
-                                4
-                            </div>
-                            <h6>Sincronización</h6>
-                            <small class="text-muted">Genera archivo final</small>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Supported formats -->
-        <div class="alert alert-info">
-            <h6 class="alert-heading">
-                <i class="fas fa-info-circle me-2"></i>
-                Formatos Soportados
-            </h6>
-            <p class="mb-0">
-                <strong>Entrada:</strong> MP4, AVI, MKV, MOV, WMV, FLV, WebM<br>
-                <strong>Salida:</strong> MKV con múltiples pistas de audio
-            </p>
         </div>
     </div>
 </div>
+
+<script>
+// Verificar estado del volumen de media al cargar la página
+document.addEventListener('DOMContentLoaded', function() {
+    checkMediaStatus();
+});
+
+async function checkMediaStatus() {
+    try {
+        const response = await fetch('/api/media/status');
+        const data = await response.json();
+        
+        const container = document.getElementById('media-status-container');
+        
+        if (data.accessible) {
+            container.innerHTML = `
+                <div class="d-flex align-items-center text-success">
+                    <i class="fas fa-check-circle me-2"></i>
+                    <div>
+                        <strong>Volumen disponible</strong>
+                        <br>
+                        <small class="text-muted">${data.message}</small>
+                    </div>
+                </div>
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="d-flex align-items-center text-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <div>
+                        <strong>No hay volumen del servidor montado</strong>
+                        <br>
+                        <small class="text-muted">Solo estará disponible la subida de archivos locales</small>
+                    </div>
+                </div>
+            `;
+        }
+    } catch (error) {
+        const container = document.getElementById('media-status-container');
+        container.innerHTML = `
+            <div class="d-flex align-items-center text-danger">
+                <i class="fas fa-times-circle me-2"></i>
+                <div>
+                    <strong>Error al verificar volumen</strong>
+                    <br>
+                    <small class="text-muted">No se pudo conectar con el servidor</small>
+                </div>
+            </div>
+        `;
+    }
+}
+</script>
 {% endblock %}
 
