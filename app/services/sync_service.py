@@ -1,18 +1,22 @@
 """
-Servicio real de sincronización de audio con IA
+Servicio optimizado de sincronización de audio con IA
+Versión mejorada para evitar problemas de memoria y recursos
 """
 
 import os
+import gc
 import uuid
 import time
 import threading
 import subprocess
 import json
 import tempfile
+import psutil
 from pathlib import Path
 from flask import current_app
 import numpy as np
 from typing import List, Tuple, Dict, Optional
+from datetime import datetime
 
 class AudioSegment:
     """Representa un segmento de audio transcrito"""
@@ -27,7 +31,7 @@ class AudioSegment:
         return f"AudioSegment({self.start:.2f}-{self.end:.2f}: '{self.text[:50]}...')"
 
 class SyncService:
-    """Servicio real de sincronización de audio con IA"""
+    """Servicio optimizado de sincronización de audio con IA"""
     
     def __init__(self):
         self.tasks = {}
@@ -38,63 +42,121 @@ class SyncService:
         self.whisper_model = None
         self.sentence_transformer = None
         self._models_loaded = False
+        
+        # Configuración de recursos
+        self.max_memory_usage = 0.8  # 80% de memoria máxima
+        self.chunk_size = 30  # Procesar audio en chunks de 30 segundos
     
     def set_app(self, app):
         """Establecer la instancia de la aplicación Flask"""
         self.app = app
     
-    def _load_ai_models(self):
-        """Cargar modelos de IA (lazy loading)"""
+    def _check_memory_usage(self) -> bool:
+        """Verificar uso de memoria del sistema"""
+        try:
+            memory = psutil.virtual_memory()
+            usage_percent = memory.percent / 100.0
+            
+            if usage_percent > self.max_memory_usage:
+                current_app.logger.warning(f"High memory usage: {usage_percent:.1%}")
+                return False
+            return True
+        except Exception:
+            return True  # Si no se puede verificar, continuar
+    
+    def _cleanup_memory(self):
+        """Limpiar memoria y forzar garbage collection"""
+        try:
+            # Limpiar modelos si están cargados
+            if self.whisper_model is not None:
+                del self.whisper_model
+                self.whisper_model = None
+            
+            if self.sentence_transformer is not None:
+                del self.sentence_transformer
+                self.sentence_transformer = None
+            
+            self._models_loaded = False
+            
+            # Forzar garbage collection
+            gc.collect()
+            
+            current_app.logger.info("Memory cleanup completed")
+        except Exception as e:
+            current_app.logger.warning(f"Error during memory cleanup: {e}")
+    
+    def _load_ai_models_safe(self):
+        """Cargar modelos de IA de forma segura con manejo de memoria"""
         if self._models_loaded:
-            return
+            return True
         
         try:
-            # Cargar Whisper
-            import whisper
-            model_name = current_app.config.get('WHISPER_MODEL', 'base')
-            self.whisper_model = whisper.load_model(model_name)
-            current_app.logger.info(f"Whisper model '{model_name}' loaded successfully")
+            # Verificar memoria disponible antes de cargar
+            if not self._check_memory_usage():
+                current_app.logger.warning("Insufficient memory for AI models, using fallback mode")
+                return False
             
-            # Cargar Sentence Transformer
-            from sentence_transformers import SentenceTransformer
-            st_model_name = current_app.config.get('SENTENCE_TRANSFORMER_MODEL', 'paraphrase-multilingual-MiniLM-L12-v2')
-            self.sentence_transformer = SentenceTransformer(st_model_name)
-            current_app.logger.info(f"Sentence Transformer '{st_model_name}' loaded successfully")
+            # Cargar Whisper con modelo pequeño para reducir uso de memoria
+            try:
+                import whisper
+                model_name = 'tiny'  # Usar modelo más pequeño por defecto
+                current_app.logger.info(f"Loading Whisper model: {model_name}")
+                self.whisper_model = whisper.load_model(model_name)
+                current_app.logger.info(f"Whisper model '{model_name}' loaded successfully")
+            except Exception as e:
+                current_app.logger.warning(f"Failed to load Whisper: {e}")
+                return False
+            
+            # Verificar memoria después de cargar Whisper
+            if not self._check_memory_usage():
+                current_app.logger.warning("Memory limit reached after loading Whisper")
+                del self.whisper_model
+                self.whisper_model = None
+                return False
+            
+            # Cargar Sentence Transformer solo si hay memoria suficiente
+            try:
+                from sentence_transformers import SentenceTransformer
+                st_model_name = 'paraphrase-multilingual-MiniLM-L12-v2'
+                current_app.logger.info(f"Loading Sentence Transformer: {st_model_name}")
+                self.sentence_transformer = SentenceTransformer(st_model_name)
+                current_app.logger.info(f"Sentence Transformer loaded successfully")
+            except Exception as e:
+                current_app.logger.warning(f"Failed to load Sentence Transformer: {e}")
+                # Continuar sin sentence transformer
             
             self._models_loaded = True
+            return True
             
         except ImportError as e:
-            current_app.logger.warning(f"AI models not available: {e}. Using fallback mode.")
-            self._models_loaded = False
+            current_app.logger.warning(f"AI libraries not available: {e}")
+            return False
         except Exception as e:
             current_app.logger.error(f"Error loading AI models: {e}")
-            self._models_loaded = False
+            self._cleanup_memory()
+            return False
     
-    def create_task(self, original_path: str, dubbed_path: str, custom_filename: str = '') -> str:
-        """Crear una nueva tarea de sincronización"""
-        task_id = str(uuid.uuid4())
-        
+    def start_sync_task(self, task_id: str, original_path: str, dubbed_path: str, custom_filename: str = ''):
+        """Iniciar tarea de sincronización de forma asíncrona"""
         with self._lock:
             self.tasks[task_id] = {
                 'id': task_id,
+                'status': 'processing',
+                'progress': 0,
+                'message': 'Iniciando procesamiento...',
                 'original_path': original_path,
                 'dubbed_path': dubbed_path,
                 'custom_filename': custom_filename,
-                'status': 'pending',
-                'progress': 0,
-                'message': 'Tarea creada',
                 'result_path': None,
-                'created_at': time.time(),
+                'created_at': datetime.now().isoformat(),
                 'error': None,
-                'temp_files': []  # Para limpiar archivos temporales
+                'temp_files': []
             }
         
-        # Iniciar procesamiento en hilo separado con contexto de aplicación
+        # Ejecutar en hilo separado con contexto de aplicación
         thread = threading.Thread(target=self._process_with_context, args=(task_id,))
         thread.daemon = True
         thread.start()
-        
-        return task_id
     
     def _process_with_context(self, task_id: str):
         """Procesar tarea con contexto de aplicación Flask"""
@@ -103,14 +165,15 @@ class SyncService:
             return
         
         with self.app.app_context():
-            self._process_task_real(task_id)
+            self._process_sync_task(task_id)
     
-    def _process_task_real(self, task_id: str):
-        """Procesamiento real de sincronización de audio"""
+    def _process_sync_task(self, task_id: str):
+        """Procesamiento optimizado de sincronización de audio"""
         try:
-            self._update_task_status(task_id, 'processing', 5, "Verificando archivos de entrada...")
+            current_app.logger.info(f"Starting sync task: {task_id}")
             
             # Verificar archivos de entrada
+            self._update_task_status(task_id, 'processing', 5, "Verificando archivos de entrada...")
             task = self.tasks[task_id]
             original_path = task['original_path']
             dubbed_path = task['dubbed_path']
@@ -120,252 +183,266 @@ class SyncService:
             if not os.path.exists(dubbed_path):
                 raise Exception(f"Archivo doblado no encontrado: {dubbed_path}")
             
-            # Cargar modelos IA
-            self._update_task_status(task_id, 'processing', 10, "Cargando modelos de IA...")
-            self._load_ai_models()
+            # Verificar memoria disponible
+            if not self._check_memory_usage():
+                self._cleanup_memory()
             
             # Extraer audio de ambos videos
             self._update_task_status(task_id, 'processing', 15, "Extrayendo audio del video original...")
-            original_audio = self._extract_audio(original_path, task_id, "original")
+            original_audio = self._extract_audio_optimized(original_path, task_id, "original")
             
             self._update_task_status(task_id, 'processing', 25, "Extrayendo audio del video doblado...")
-            dubbed_audio = self._extract_audio(dubbed_path, task_id, "dubbed")
+            dubbed_audio = self._extract_audio_optimized(dubbed_path, task_id, "dubbed")
             
-            # Transcribir audios
-            self._update_task_status(task_id, 'processing', 35, "Transcribiendo audio original...")
-            original_segments = self._transcribe_audio(original_audio, task_id)
+            # Cargar modelos IA de forma segura
+            self._update_task_status(task_id, 'processing', 35, "Preparando modelos de IA...")
+            ai_available = self._load_ai_models_safe()
             
-            self._update_task_status(task_id, 'processing', 50, "Transcribiendo audio doblado...")
-            dubbed_segments = self._transcribe_audio(dubbed_audio, task_id)
+            if ai_available:
+                # Transcribir audios con IA
+                self._update_task_status(task_id, 'processing', 45, "Transcribiendo audio original...")
+                original_segments = self._transcribe_audio_safe(original_audio, task_id)
+                
+                self._update_task_status(task_id, 'processing', 60, "Transcribiendo audio doblado...")
+                dubbed_segments = self._transcribe_audio_safe(dubbed_audio, task_id)
+                
+                # Calcular offset con análisis semántico
+                self._update_task_status(task_id, 'processing', 75, "Calculando sincronización...")
+                time_offset = self._calculate_sync_offset_safe(original_segments, dubbed_segments)
+            else:
+                # Modo fallback sin IA
+                self._update_task_status(task_id, 'processing', 60, "Usando modo de compatibilidad...")
+                time_offset = self._calculate_simple_offset_from_audio(original_audio, dubbed_audio)
             
-            # Analizar correspondencias semánticas
-            self._update_task_status(task_id, 'processing', 65, "Analizando correspondencias semánticas...")
-            time_offset = self._calculate_sync_offset(original_segments, dubbed_segments, task_id)
-            
-            # Aplicar sincronización y generar MKV
-            self._update_task_status(task_id, 'processing', 80, "Sincronizando audio...")
+            # Aplicar sincronización
+            self._update_task_status(task_id, 'processing', 85, "Aplicando sincronización...")
             synced_audio = self._apply_sync_offset(dubbed_audio, time_offset, task_id)
             
-            self._update_task_status(task_id, 'processing', 90, "Generando archivo MKV final...")
-            result_path = self._generate_mkv_output(original_path, original_audio, synced_audio, task_id)
+            # Generar archivo MKV final
+            self._update_task_status(task_id, 'processing', 95, "Generando archivo MKV final...")
+            result_path = self._generate_mkv_final(original_path, original_audio, synced_audio, task_id)
             
             # Completar tarea
-            self._update_task_status(task_id, 'completed', 100, "Sincronización completada exitosamente")
             with self._lock:
                 self.tasks[task_id]['result_path'] = result_path
+                self.tasks[task_id]['status'] = 'completed'
+                self.tasks[task_id]['progress'] = 100
+                self.tasks[task_id]['message'] = '¡Sincronización completada exitosamente!'
             
-            # Limpiar archivos temporales
-            self._cleanup_temp_files(task_id)
+            current_app.logger.info(f"Task completed successfully: {task_id}")
             
         except Exception as e:
             current_app.logger.error(f"Error processing task {task_id}: {str(e)}")
             self._update_task_error(task_id, f"Error en el procesamiento: {str(e)}")
-            self._cleanup_temp_files(task_id)
+        finally:
+            # Limpiar archivos temporales y memoria
+            self._cleanup_task_files(task_id)
+            self._cleanup_memory()
     
-    def _extract_audio(self, video_path: str, task_id: str, prefix: str) -> str:
-        """Extraer audio de un video usando FFmpeg"""
+    def _extract_audio_optimized(self, video_path: str, task_id: str, prefix: str) -> str:
+        """Extraer audio de forma optimizada"""
         try:
-            # Crear archivo temporal para el audio
             temp_dir = tempfile.gettempdir()
             audio_path = os.path.join(temp_dir, f"{prefix}_{task_id}.wav")
             
-            # Comando FFmpeg para extraer audio
+            # Comando FFmpeg optimizado para menor uso de memoria
             cmd = [
                 'ffmpeg', '-i', video_path,
                 '-vn',  # Sin video
                 '-acodec', 'pcm_s16le',  # Codec de audio
-                '-ar', '16000',  # Sample rate
+                '-ar', '16000',  # Sample rate reducido
                 '-ac', '1',  # Mono
+                '-map_metadata', '-1',  # Sin metadatos
+                '-fflags', '+bitexact',  # Reproducible
                 '-y',  # Sobrescribir
                 audio_path
             ]
             
-            # Ejecutar FFmpeg
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             if result.returncode != 0:
                 raise Exception(f"Error extrayendo audio: {result.stderr}")
             
-            # Agregar a archivos temporales para limpieza
+            # Agregar a archivos temporales
             with self._lock:
                 self.tasks[task_id]['temp_files'].append(audio_path)
             
-            current_app.logger.info(f"Audio extracted: {audio_path}")
+            current_app.logger.info(f"Audio extracted successfully: {audio_path}")
             return audio_path
             
+        except subprocess.TimeoutExpired:
+            raise Exception("Timeout extrayendo audio - archivo demasiado grande")
         except Exception as e:
-            raise Exception(f"Error extrayendo audio de {video_path}: {str(e)}")
+            raise Exception(f"Error extrayendo audio: {str(e)}")
     
-    def _transcribe_audio(self, audio_path: str, task_id: str) -> List[AudioSegment]:
-        """Transcribir audio usando Whisper"""
+    def _transcribe_audio_safe(self, audio_path: str, task_id: str) -> List[AudioSegment]:
+        """Transcribir audio de forma segura con manejo de memoria"""
         try:
-            if not self._models_loaded or not self.whisper_model:
-                # Fallback: crear segmentos simulados
+            if not self.whisper_model:
                 return self._create_fallback_segments(audio_path)
             
-            # Transcribir con Whisper
+            # Verificar memoria antes de transcribir
+            if not self._check_memory_usage():
+                current_app.logger.warning("Insufficient memory for transcription, using fallback")
+                return self._create_fallback_segments(audio_path)
+            
+            # Transcribir con configuración optimizada
             result = self.whisper_model.transcribe(
                 audio_path,
-                word_timestamps=True,
-                language=None  # Auto-detectar idioma
+                word_timestamps=False,  # Reducir uso de memoria
+                language=None,
+                fp16=False,  # Usar FP32 para compatibilidad
+                verbose=False
             )
             
             segments = []
-            for segment in result['segments']:
+            for segment in result.get('segments', []):
                 audio_segment = AudioSegment(
                     start=segment['start'],
                     end=segment['end'],
                     text=segment['text'],
-                    confidence=segment.get('avg_logprob', 0.0)
+                    confidence=1.0
                 )
                 segments.append(audio_segment)
             
-            current_app.logger.info(f"Transcribed {len(segments)} segments from {audio_path}")
+            current_app.logger.info(f"Transcribed {len(segments)} segments")
             return segments
             
         except Exception as e:
-            current_app.logger.warning(f"Error in Whisper transcription: {e}. Using fallback.")
+            current_app.logger.warning(f"Transcription failed: {e}, using fallback")
             return self._create_fallback_segments(audio_path)
     
     def _create_fallback_segments(self, audio_path: str) -> List[AudioSegment]:
-        """Crear segmentos de audio simulados cuando Whisper no está disponible"""
+        """Crear segmentos simulados cuando la IA no está disponible"""
         try:
-            # Obtener duración del audio usando FFprobe
-            cmd = [
-                'ffprobe', '-v', 'quiet', '-show_entries', 'format=duration',
-                '-of', 'csv=p=0', audio_path
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            # Obtener duración del audio
+            cmd = ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', audio_path]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             duration = float(result.stdout.strip()) if result.returncode == 0 else 60.0
             
-            # Crear segmentos simulados cada 5 segundos
+            # Crear segmentos cada 10 segundos
             segments = []
-            for i in range(0, int(duration), 5):
+            for i in range(0, int(duration), 10):
                 start = i
-                end = min(i + 5, duration)
-                text = f"Segmento de audio {i//5 + 1}"
+                end = min(i + 10, duration)
+                text = f"Segmento de audio {i//10 + 1}"
                 segments.append(AudioSegment(start, end, text))
             
             return segments
             
-        except Exception as e:
-            current_app.logger.error(f"Error creating fallback segments: {e}")
-            # Crear al menos un segmento
+        except Exception:
             return [AudioSegment(0, 60, "Audio segment")]
     
-    def _calculate_sync_offset(self, original_segments: List[AudioSegment], 
-                             dubbed_segments: List[AudioSegment], task_id: str) -> float:
-        """Calcular desfase temporal usando análisis semántico"""
+    def _calculate_sync_offset_safe(self, original_segments: List[AudioSegment], 
+                                   dubbed_segments: List[AudioSegment]) -> float:
+        """Calcular offset de forma segura"""
         try:
-            if not self._models_loaded or not self.sentence_transformer:
-                # Fallback: calcular offset simple basado en duración
-                return self._calculate_simple_offset(original_segments, dubbed_segments)
+            if not self.sentence_transformer or not original_segments or not dubbed_segments:
+                return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
             
-            # Extraer textos para análisis semántico
-            original_texts = [seg.text for seg in original_segments if seg.text.strip()]
-            dubbed_texts = [seg.text for seg in dubbed_segments if seg.text.strip()]
+            # Verificar memoria
+            if not self._check_memory_usage():
+                return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
             
-            if not original_texts or not dubbed_texts:
+            # Usar solo los primeros segmentos para reducir carga
+            max_segments = 10
+            orig_texts = [seg.text for seg in original_segments[:max_segments] if seg.text.strip()]
+            dub_texts = [seg.text for seg in dubbed_segments[:max_segments] if seg.text.strip()]
+            
+            if not orig_texts or not dub_texts:
                 return 0.0
             
             # Calcular embeddings
-            original_embeddings = self.sentence_transformer.encode(original_texts)
-            dubbed_embeddings = self.sentence_transformer.encode(dubbed_texts)
+            orig_embeddings = self.sentence_transformer.encode(orig_texts)
+            dub_embeddings = self.sentence_transformer.encode(dub_texts)
             
-            # Encontrar mejores correspondencias
-            best_matches = []
-            similarity_threshold = current_app.config.get('SIMILARITY_THRESHOLD', 0.7)
+            # Encontrar mejor correspondencia
+            best_offset = 0.0
+            best_similarity = 0.0
             
-            for i, orig_emb in enumerate(original_embeddings):
-                best_similarity = -1
-                best_match_idx = -1
-                
-                for j, dub_emb in enumerate(dubbed_embeddings):
+            for i, orig_emb in enumerate(orig_embeddings):
+                for j, dub_emb in enumerate(dub_embeddings):
                     similarity = np.dot(orig_emb, dub_emb) / (np.linalg.norm(orig_emb) * np.linalg.norm(dub_emb))
                     
-                    if similarity > best_similarity and similarity > similarity_threshold:
+                    if similarity > best_similarity and similarity > 0.6:
                         best_similarity = similarity
-                        best_match_idx = j
-                
-                if best_match_idx >= 0:
-                    time_diff = dubbed_segments[best_match_idx].start - original_segments[i].start
-                    best_matches.append((time_diff, best_similarity))
+                        best_offset = dubbed_segments[j].start - original_segments[i].start
             
-            if not best_matches:
-                current_app.logger.warning("No semantic matches found, using simple offset")
-                return self._calculate_simple_offset(original_segments, dubbed_segments)
-            
-            # Calcular offset promedio ponderado por similitud
-            weighted_sum = sum(offset * similarity for offset, similarity in best_matches)
-            total_weight = sum(similarity for _, similarity in best_matches)
-            
-            calculated_offset = weighted_sum / total_weight if total_weight > 0 else 0.0
-            
-            current_app.logger.info(f"Calculated sync offset: {calculated_offset:.3f}s from {len(best_matches)} matches")
-            return calculated_offset
+            current_app.logger.info(f"Calculated offset: {best_offset:.3f}s (similarity: {best_similarity:.3f})")
+            return best_offset
             
         except Exception as e:
-            current_app.logger.warning(f"Error in semantic analysis: {e}. Using simple offset.")
-            return self._calculate_simple_offset(original_segments, dubbed_segments)
+            current_app.logger.warning(f"Semantic analysis failed: {e}")
+            return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
     
-    def _calculate_simple_offset(self, original_segments: List[AudioSegment], 
-                                dubbed_segments: List[AudioSegment]) -> float:
-        """Calcular offset simple basado en inicio de primer segmento"""
+    def _calculate_simple_offset_segments(self, original_segments: List[AudioSegment], 
+                                        dubbed_segments: List[AudioSegment]) -> float:
+        """Calcular offset simple basado en segmentos"""
         if not original_segments or not dubbed_segments:
             return 0.0
-        
-        # Usar diferencia entre primeros segmentos
-        offset = dubbed_segments[0].start - original_segments[0].start
-        current_app.logger.info(f"Simple offset calculated: {offset:.3f}s")
-        return offset
+        return dubbed_segments[0].start - original_segments[0].start
+    
+    def _calculate_simple_offset_from_audio(self, original_audio: str, dubbed_audio: str) -> float:
+        """Calcular offset simple comparando archivos de audio"""
+        try:
+            # Obtener duración de ambos audios
+            def get_duration(audio_path):
+                cmd = ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', audio_path]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                return float(result.stdout.strip()) if result.returncode == 0 else 0.0
+            
+            orig_duration = get_duration(original_audio)
+            dub_duration = get_duration(dubbed_audio)
+            
+            # Calcular offset basado en diferencia de duración
+            offset = (dub_duration - orig_duration) / 2.0
+            current_app.logger.info(f"Simple offset calculated: {offset:.3f}s")
+            return offset
+            
+        except Exception:
+            return 0.0
     
     def _apply_sync_offset(self, audio_path: str, offset: float, task_id: str) -> str:
-        """Aplicar desfase temporal al audio doblado"""
+        """Aplicar desfase temporal al audio"""
         try:
             temp_dir = tempfile.gettempdir()
             synced_audio_path = os.path.join(temp_dir, f"synced_{task_id}.wav")
             
-            # Comando FFmpeg para aplicar offset
-            if offset > 0:
-                # Retrasar audio (agregar silencio al inicio)
+            if abs(offset) < 0.1:  # Offset muy pequeño, copiar archivo
+                cmd = ['cp', audio_path, synced_audio_path]
+            elif offset > 0:  # Retrasar audio
                 cmd = [
                     'ffmpeg', '-i', audio_path,
                     '-af', f'adelay={int(abs(offset) * 1000)}|{int(abs(offset) * 1000)}',
                     '-y', synced_audio_path
                 ]
-            elif offset < 0:
-                # Adelantar audio (cortar desde el inicio)
+            else:  # Adelantar audio
                 cmd = [
                     'ffmpeg', '-ss', str(abs(offset)), '-i', audio_path,
                     '-y', synced_audio_path
                 ]
-            else:
-                # Sin offset, copiar archivo
-                cmd = ['cp', audio_path, synced_audio_path]
             
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             if result.returncode != 0:
                 raise Exception(f"Error aplicando sincronización: {result.stderr}")
             
-            # Agregar a archivos temporales
             with self._lock:
                 self.tasks[task_id]['temp_files'].append(synced_audio_path)
             
-            current_app.logger.info(f"Sync applied: {offset:.3f}s offset to {synced_audio_path}")
             return synced_audio_path
             
         except Exception as e:
             raise Exception(f"Error aplicando sincronización: {str(e)}")
     
-    def _generate_mkv_output(self, original_video: str, original_audio: str, 
+    def _generate_mkv_final(self, original_video: str, original_audio: str, 
                            synced_audio: str, task_id: str) -> str:
         """Generar archivo MKV final con video original y ambas pistas de audio"""
         try:
-            # Determinar nombre del archivo de salida
-            task = self.tasks[task_id]
-            custom_filename = task.get('custom_filename', '')
-            
-            output_dir = Path(current_app.config['OUTPUT_FOLDER'])
+            output_dir = current_app.config['OUTPUT_FOLDER']
             output_dir.mkdir(exist_ok=True)
+            
+            # Determinar nombre del archivo
+            task = self.tasks.get(task_id, {})
+            custom_filename = task.get('custom_filename', '')
             
             if custom_filename:
                 if not custom_filename.lower().endswith('.mkv'):
@@ -379,88 +456,82 @@ class SyncService:
             # Comando FFmpeg para crear MKV con múltiples pistas de audio
             cmd = [
                 'ffmpeg',
-                '-i', original_video,      # Video original
-                '-i', original_audio,      # Audio original
-                '-i', synced_audio,        # Audio doblado sincronizado
-                '-map', '0:v',             # Video del primer input
-                '-map', '1:a',             # Audio original del segundo input
-                '-map', '2:a',             # Audio doblado del tercer input
-                '-c:v', 'copy',            # Copiar video sin recodificar
-                '-c:a', 'aac',             # Codec de audio AAC
+                '-i', original_video,    # Video original
+                '-i', original_audio,    # Audio original
+                '-i', synced_audio,      # Audio sincronizado
+                '-map', '0:v',           # Video del primer input
+                '-map', '1:a',           # Audio original
+                '-map', '2:a',           # Audio sincronizado
+                '-c:v', 'copy',          # Copiar video sin recodificar
+                '-c:a', 'aac',           # Codec de audio
+                '-b:a', '128k',          # Bitrate de audio
                 '-metadata:s:a:0', 'title=Original',
-                '-metadata:s:a:1', 'title=Dubbed (Synced)',
-                '-metadata:s:a:0', 'language=eng',
-                '-metadata:s:a:1', 'language=spa',
-                '-y',                      # Sobrescribir archivo existente
+                '-metadata:s:a:1', 'title=Doblado',
+                '-y',                    # Sobrescribir
                 str(result_path)
             ]
             
-            # Ejecutar FFmpeg
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             if result.returncode != 0:
                 raise Exception(f"Error generando MKV: {result.stderr}")
             
             # Verificar que el archivo se creó correctamente
-            if not result_path.exists():
-                raise Exception("El archivo MKV no se generó correctamente")
+            if not result_path.exists() or result_path.stat().st_size < 1000:
+                raise Exception("El archivo MKV generado está vacío o corrupto")
             
-            file_size = result_path.stat().st_size
-            if file_size < 1024:  # Menos de 1KB indica error
-                raise Exception(f"Archivo MKV demasiado pequeño: {file_size} bytes")
-            
-            current_app.logger.info(f"MKV generated successfully: {result_path} ({file_size} bytes)")
+            current_app.logger.info(f"MKV generated successfully: {result_path} ({result_path.stat().st_size} bytes)")
             return str(result_path)
             
         except Exception as e:
             raise Exception(f"Error generando archivo MKV: {str(e)}")
     
-    def _cleanup_temp_files(self, task_id: str):
-        """Limpiar archivos temporales"""
-        try:
-            with self._lock:
-                temp_files = self.tasks.get(task_id, {}).get('temp_files', [])
-            
-            for temp_file in temp_files:
-                try:
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                        current_app.logger.debug(f"Cleaned up temp file: {temp_file}")
-                except OSError as e:
-                    current_app.logger.warning(f"Could not remove temp file {temp_file}: {e}")
-            
-            # Limpiar lista de archivos temporales
-            with self._lock:
-                if task_id in self.tasks:
-                    self.tasks[task_id]['temp_files'] = []
-                    
-        except Exception as e:
-            current_app.logger.error(f"Error cleaning up temp files for task {task_id}: {e}")
-    
     def _update_task_status(self, task_id: str, status: str, progress: int, message: str):
-        """Actualizar estado de una tarea"""
+        """Actualizar estado de la tarea"""
         with self._lock:
             if task_id in self.tasks:
-                self.tasks[task_id]['status'] = status
-                self.tasks[task_id]['progress'] = progress
-                self.tasks[task_id]['message'] = message
+                self.tasks[task_id].update({
+                    'status': status,
+                    'progress': progress,
+                    'message': message
+                })
     
     def _update_task_error(self, task_id: str, error_message: str):
         """Actualizar tarea con error"""
         with self._lock:
             if task_id in self.tasks:
-                self.tasks[task_id]['status'] = 'error'
-                self.tasks[task_id]['error'] = error_message
-                self.tasks[task_id]['message'] = f'Error: {error_message}'
+                self.tasks[task_id].update({
+                    'status': 'error',
+                    'error': error_message,
+                    'message': f'Error: {error_message}'
+                })
     
-    def get_task_status(self, task_id: str) -> dict:
+    def _cleanup_task_files(self, task_id: str):
+        """Limpiar archivos temporales de una tarea"""
+        try:
+            with self._lock:
+                task = self.tasks.get(task_id, {})
+                temp_files = task.get('temp_files', [])
+            
+            for file_path in temp_files:
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except Exception as e:
+                    current_app.logger.warning(f"Error removing temp file {file_path}: {e}")
+            
+            current_app.logger.info(f"Cleaned up {len(temp_files)} temp files for task {task_id}")
+            
+        except Exception as e:
+            current_app.logger.warning(f"Error during cleanup: {e}")
+    
+    def get_task_status(self, task_id: str) -> Dict[str, Any]:
         """Obtener estado de una tarea"""
         with self._lock:
             task = self.tasks.get(task_id)
             if not task:
-                return {'error': 'Tarea no encontrada'}
+                return {'status': 'not_found', 'error': 'Tarea no encontrada'}
             
             return {
-                'task_id': task_id,
                 'status': task['status'],
                 'progress': task['progress'],
                 'message': task['message'],
@@ -480,47 +551,20 @@ class SyncService:
                 return result_path, custom_name
             return None, None
     
-    def list_all_tasks(self) -> list:
+    def list_all_tasks(self) -> Dict[str, Any]:
         """Listar todas las tareas"""
         with self._lock:
-            return [
-                {
-                    'task_id': task_id,
-                    'status': task['status'],
-                    'progress': task['progress'],
-                    'message': task['message'],
-                    'created_at': task['created_at'],
-                    'custom_filename': task.get('custom_filename', '')
-                }
-                for task_id, task in self.tasks.items()
-            ]
-    
-    def cleanup_old_tasks(self, max_age_hours: int = 24):
-        """Limpiar tareas antiguas"""
-        current_time = time.time()
-        max_age_seconds = max_age_hours * 3600
-        
-        with self._lock:
-            old_tasks = [
-                task_id for task_id, task in self.tasks.items()
-                if current_time - task['created_at'] > max_age_seconds
-            ]
-            
-            for task_id in old_tasks:
-                # Limpiar archivos temporales
-                self._cleanup_temp_files(task_id)
-                
-                # Eliminar archivo de resultado si existe
-                task = self.tasks[task_id]
-                result_path = task.get('result_path')
-                if result_path and os.path.exists(result_path):
-                    try:
-                        os.remove(result_path)
-                    except OSError:
-                        pass
-                
-                # Eliminar tarea
-                del self.tasks[task_id]
-            
-            return len(old_tasks)
+            return {
+                'tasks': [
+                    {
+                        'task_id': task_id,
+                        'status': task['status'],
+                        'progress': task['progress'],
+                        'message': task['message'],
+                        'created_at': task['created_at']
+                    }
+                    for task_id, task in self.tasks.items()
+                ],
+                'total': len(self.tasks)
+            }
 

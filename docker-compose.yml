@@ -2,8 +2,9 @@ version: '3.8'
 
 services:
   syncdub-app:
-    build:
+    build: 
       context: .
+      dockerfile: Dockerfile
       args:
         PUID: ${PUID:-1000}
         PGID: ${PGID:-1000}
@@ -16,31 +17,73 @@ services:
       - ${OUTPUT_DIR:-./output}:/app/output
       - ${MODELS_DIR:-./models}:/app/models
       # Media source volume (NFS mount point)
-      - ${MEDIA_SOURCE_PATH:-./media}:/app/media
+      - ${MEDIA_SOURCE_PATH:-./media}:/app/video_source
     environment:
       - FLASK_ENV=${FLASK_ENV:-production}
       - SECRET_KEY=${SECRET_KEY:-syncdub-secret-key-2024}
-      - MEDIA_SOURCE_PATH=/app/media
       - MEDIA_SOURCE_ENABLED=${MEDIA_SOURCE_ENABLED:-false}
+      - MEDIA_SOURCE_PATH=/app/video_source
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      # Configuraciones de memoria y rendimiento
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - MALLOC_TRIM_THRESHOLD_=100000
+      - MALLOC_MMAP_THRESHOLD_=100000
+      - OMP_NUM_THREADS=2
+      - MKL_NUM_THREADS=2
+      - NUMEXPR_MAX_THREADS=2
+    # Configuraciones de recursos para evitar OOM
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    # Configuraciones adicionales de memoria
+    mem_limit: 6g
+    mem_reservation: 1g
+    memswap_limit: 6g
+    oom_kill_disable: false
+    # Configuraciones de red
+    networks:
+      - syncdub-network
+    # Política de reinicio
     restart: unless-stopped
+    # Configuraciones de seguridad
+    security_opt:
+      - no-new-privileges:true
+    # Healthcheck
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-    networks:
-      - arr_stack
+      start_period: 60s
+    # Configuraciones de logging para evitar llenar disco
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+# Red personalizada
 networks:
-  arr_stack:
-    external: true
-
+  syncdub-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+# Volúmenes nombrados para persistencia
 volumes:
   uploads:
+    driver: local
   output:
+    driver: local
   models:
-  media:
+    driver: local
+  video_source:
+    driver: local
 

@@ -1,23 +1,59 @@
-# SyncDub MVP - Python Dependencies
+# Requirements optimizados para SyncDub MVP
+# Versiones específicas para estabilidad y rendimiento
 
-# Web Framework
+# Framework web
 Flask==2.3.3
 Werkzeug==2.3.7
-python-dotenv==1.0.0
+Jinja2==3.1.2
+MarkupSafe==2.1.3
 
-# File handling
-requests==2.31.0
+# CORS para frontend-backend
+Flask-CORS==4.0.0
 
-# AI and Machine Learning
+# Procesamiento de archivos
+Pillow==10.0.1
+python-magic==0.4.27
+
+# IA y Machine Learning (versiones optimizadas)
 openai-whisper==20231117
 sentence-transformers==2.2.2
-torch==2.1.0
-torchaudio==2.1.0
-transformers==4.35.0
 
-# Audio/Video processing
-numpy==1.24.3
+# PyTorch (CPU only para reducir tamaño)
+torch==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
+torchaudio==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
 
-# Note: FFmpeg must be installed in the system (handled by Dockerfile)
-# Note: Some dependencies may require CUDA for GPU acceleration (optional)
+# Dependencias de ML
+numpy==1.24.4
+scipy==1.11.4
+scikit-learn==1.3.2
+transformers==4.35.2
+tokenizers==0.15.0
+huggingface-hub==0.19.4
+
+# Procesamiento de audio/video
+librosa==0.10.1
+soundfile==0.12.1
+
+# Utilidades del sistema
+psutil==5.9.6
+requests==2.31.0
+urllib3==2.0.7
+
+# Manejo de fechas y tiempo
+python-dateutil==2.8.2
+
+# Logging y debugging
+colorama==0.4.6
+
+# Seguridad
+cryptography==41.0.7
+
+# Optimización de memoria
+memory-profiler==0.61.0
+pympler==0.9
+
+# Utilidades adicionales
+tqdm==4.66.1
+click==8.1.7
+packaging==23.2
 

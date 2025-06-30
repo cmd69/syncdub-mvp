@@ -1,52 +1,105 @@
-# SyncDub MVP - Dockerfile with full AI support
+# Dockerfile optimizado para SyncDub MVP
+# Versión mejorada para manejo de memoria y recursos
+
 FROM python:3.11-slim
 
-# Permitir personalizar UID/GID
+# Variables de entorno para optimización
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Configuración de memoria y recursos
+ENV MALLOC_TRIM_THRESHOLD_=100000
+ENV MALLOC_MMAP_THRESHOLD_=100000
+ENV PYTHONHASHSEED=random
+
+# Configuración de usuario para NFS
 ARG PUID=1000
 ARG PGID=1000
+ENV PUID=${PUID}
+ENV PGID=${PGID}
 
-# Instalar dependencias del sistema incluyendo FFmpeg
-RUN apt-get update && apt-get install -y \
+# Instalar dependencias del sistema de forma optimizada
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # FFmpeg para procesamiento de audio/video
     ffmpeg \
-    git \
-    wget \
+    # Herramientas de sistema
     curl \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    wget \
+    git \
+    # Dependencias para compilación (mínimas)
+    gcc \
+    g++ \
+    python3-dev \
+    # Herramientas de monitoreo
+    htop \
+    procps \
+    # Limpiar cache
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/* \
+    && rm -rf /var/tmp/*
 
-# Crear grupo y usuario con UID/GID configurables
+# Crear usuario para NFS con UID/GID específicos
 RUN groupadd -g ${PGID} appgroup && \
-    useradd -u ${PUID} -g ${PGID} -m appuser
+    useradd -u ${PUID} -g appgroup -m -s /bin/bash appuser
 
-# Crear directorio de trabajo
+# Crear directorios de la aplicación
 WORKDIR /app
 
-# Copiar requirements y instalar dependencias de Python
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Pre-descargar modelos de IA (opcional, se pueden descargar en runtime)
-RUN python -c "import whisper; whisper.load_model('base')" || echo "Whisper model will be downloaded on first use"
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')" || echo "Sentence transformer model will be downloaded on first use"
-
-# Copiar el código de la aplicación
-COPY . .
-
-# Crear directorios necesarios y ajustar permisos
-RUN mkdir -p uploads output models media && \
+# Crear directorios con permisos correctos
+RUN mkdir -p /app/uploads /app/output /app/models /app/video_source && \
     chown -R appuser:appgroup /app
 
-# Exponer puerto
-EXPOSE 5000
+# Copiar requirements primero para aprovechar cache de Docker
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Variables de entorno
-ENV FLASK_APP=app.py
-ENV FLASK_ENV=production
-ENV PYTHONPATH=/app
+# Instalar dependencias Python de forma optimizada
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Cambiar a usuario no root
+# Pre-descargar modelos de IA para evitar descargas durante ejecución
+RUN python -c "
+import whisper
+import warnings
+warnings.filterwarnings('ignore')
+try:
+    print('Downloading Whisper tiny model...')
+    whisper.load_model('tiny')
+    print('Whisper tiny model downloaded successfully')
+except Exception as e:
+    print(f'Warning: Could not download Whisper model: {e}')
+"
+
+RUN python -c "
+from sentence_transformers import SentenceTransformer
+import warnings
+warnings.filterwarnings('ignore')
+try:
+    print('Downloading Sentence Transformer model...')
+    model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+    print('Sentence Transformer model downloaded successfully')
+except Exception as e:
+    print(f'Warning: Could not download Sentence Transformer model: {e}')
+"
+
+# Copiar código de la aplicación
+COPY --chown=appuser:appgroup . /app/
+
+# Configurar permisos
+RUN chmod +x /app/start.sh 2>/dev/null || true
+
+# Cambiar a usuario no-root
 USER appuser
 
-# Comando de inicio
+# Configuración de salud del contenedor
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:5000/api/health || exit 1
+
+# Puerto de la aplicación
+EXPOSE 5000
+
+# Comando por defecto
 CMD ["python", "app.py"]
+
