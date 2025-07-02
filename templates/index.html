@@ -4,148 +4,215 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-lg-8 mx-auto text-center">
+    <div class="col-lg-8 mx-auto">
         <!-- Hero Section -->
-        <div class="hero-section mb-5">
-            <h1 class="display-4 text-primary mb-3">
-                <i class="fas fa-film me-3"></i>
+        <div class="text-center mb-5">
+            <h1 class="display-4 fw-bold text-primary mb-3">
+                <i class="fas fa-sync-alt me-3"></i>
                 SyncDub MVP
             </h1>
-            <p class="lead text-muted mb-4">
-                Sincronización inteligente de audio entre versiones originales y dobladas de películas
+            <p class="lead text-muted">
+                Sincronización inteligente de audio entre versiones originales y dobladas usando IA
             </p>
-            <div class="d-grid gap-2 d-md-block">
-                <a href="{{ url_for('main.upload') }}" class="btn btn-primary btn-lg">
-                    <i class="fas fa-upload me-2"></i>
-                    Comenzar Sincronización
-                </a>
-                <a href="{{ url_for('main.about') }}" class="btn btn-outline-secondary btn-lg">
-                    <i class="fas fa-info-circle me-2"></i>
-                    Más Información
-                </a>
+        </div>
+
+        <!-- Status Cards -->
+        <div class="row g-4 mb-5">
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-success mb-3">
+                            <i class="fas fa-robot fa-3x"></i>
+                        </div>
+                        <h5 class="card-title">IA Avanzada</h5>
+                        <p class="card-text text-muted">
+                            Whisper + Sentence Transformers para análisis semántico preciso
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-info mb-3">
+                            <i class="fas fa-server fa-3x"></i>
+                        </div>
+                        <h5 class="card-title">Estado del Sistema</h5>
+                        <p class="card-text" id="systemStatus">
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            Verificando...
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-warning mb-3">
+                            <i class="fas fa-folder fa-3x"></i>
+                        </div>
+                        <h5 class="card-title">Volumen de Medios</h5>
+                        <p class="card-text" id="mediaStatus">
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            Verificando...
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Features -->
-        <div class="row g-4 mb-5">
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body text-center">
-                        <div class="feature-icon mb-3">
-                            <i class="fas fa-microphone-alt fa-3x text-primary"></i>
-                        </div>
-                        <h5 class="card-title">Transcripción IA</h5>
-                        <p class="card-text text-muted">
-                            Utiliza OpenAI Whisper para transcribir automáticamente el audio de ambas versiones
-                        </p>
-                    </div>
-                </div>
+        <div class="card border-0 shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-star me-2"></i>
+                    Características Principales
+                </h4>
             </div>
-            
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body text-center">
-                        <div class="feature-icon mb-3">
-                            <i class="fas fa-brain fa-3x text-success"></i>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="d-flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-upload text-primary fa-2x"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="fw-bold">Doble Fuente de Archivos</h6>
+                                <p class="text-muted mb-0">
+                                    Sube videos desde tu equipo o selecciona desde volumen NFS montado
+                                </p>
+                            </div>
                         </div>
-                        <h5 class="card-title">Emparejamiento Semántico</h5>
-                        <p class="card-text text-muted">
-                            Sentence Transformers para encontrar correspondencias inteligentes entre diálogos
-                        </p>
                     </div>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body text-center">
-                        <div class="feature-icon mb-3">
-                            <i class="fas fa-sync-alt fa-3x text-warning"></i>
+                    
+                    <div class="col-md-6">
+                        <div class="d-flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-brain text-success fa-2x"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="fw-bold">Análisis Semántico</h6>
+                                <p class="text-muted mb-0">
+                                    Encuentra correspondencias entre diálogos usando embeddings de IA
+                                </p>
+                            </div>
                         </div>
-                        <h5 class="card-title">Sincronización Automática</h5>
-                        <p class="card-text text-muted">
-                            Calcula y aplica automáticamente el desfase temporal para perfecta sincronización
-                        </p>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Media Source Status -->
-        <div class="row">
-            <div class="col-md-8 mx-auto">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-light">
-                        <h6 class="mb-0">
-                            <i class="fas fa-server me-2"></i>
-                            Estado del Volumen de Media
-                        </h6>
+                    
+                    <div class="col-md-6">
+                        <div class="d-flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-file-video text-info fa-2x"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="fw-bold">Archivos Grandes</h6>
+                                <p class="text-muted mb-0">
+                                    Soporte para archivos de hasta 20GB con procesamiento optimizado
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <div id="media-status-container">
-                            <div class="d-flex align-items-center">
-                                <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
-                                    <span class="visually-hidden">Verificando...</span>
-                                </div>
-                                <span class="text-muted">Verificando disponibilidad del volumen...</span>
+                    
+                    <div class="col-md-6">
+                        <div class="d-flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-microchip text-warning fa-2x"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="fw-bold">Aceleración GPU</h6>
+                                <p class="text-muted mb-0">
+                                    Procesamiento acelerado con CUDA para máximo rendimiento
+                                </p>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+
+        <!-- Quick Actions -->
+        <div class="text-center mt-5">
+            <a href="{{ url_for('main.upload') }}" class="btn btn-primary btn-lg me-3">
+                <i class="fas fa-upload me-2"></i>
+                Comenzar Sincronización
+            </a>
+            <a href="{{ url_for('main.status') }}" class="btn btn-outline-secondary btn-lg">
+                <i class="fas fa-tasks me-2"></i>
+                Ver Estado
+            </a>
+        </div>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-// Verificar estado del volumen de media al cargar la página
+// Verificar estado del sistema al cargar la página
 document.addEventListener('DOMContentLoaded', function() {
+    checkSystemStatus();
     checkMediaStatus();
 });
 
-async function checkMediaStatus() {
-    try {
-        const response = await fetch('/api/media/status');
-        const data = await response.json();
-        
-        const container = document.getElementById('media-status-container');
-        
-        if (data.accessible) {
-            container.innerHTML = `
-                <div class="d-flex align-items-center text-success">
-                    <i class="fas fa-check-circle me-2"></i>
-                    <div>
-                        <strong>Volumen disponible</strong>
-                        <br>
-                        <small class="text-muted">${data.message}</small>
-                    </div>
-                </div>
+function checkSystemStatus() {
+    fetch('/api/health')
+        .then(response => response.json())
+        .then(data => {
+            const statusElement = document.getElementById('systemStatus');
+            if (data.status === 'healthy') {
+                statusElement.innerHTML = `
+                    <i class="fas fa-check-circle text-success me-1"></i>
+                    Sistema Operativo<br>
+                    <small class="text-muted">${data.memory_usage} memoria</small>
+                `;
+            } else {
+                statusElement.innerHTML = `
+                    <i class="fas fa-exclamation-triangle text-warning me-1"></i>
+                    ${data.status}<br>
+                    <small class="text-muted">${data.message || data.error}</small>
+                `;
+            }
+        })
+        .catch(error => {
+            document.getElementById('systemStatus').innerHTML = `
+                <i class="fas fa-times-circle text-danger me-1"></i>
+                Error de Conexión
             `;
-        } else {
-            container.innerHTML = `
-                <div class="d-flex align-items-center text-warning">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    <div>
-                        <strong>No hay volumen del servidor montado</strong>
-                        <br>
-                        <small class="text-muted">Solo estará disponible la subida de archivos locales</small>
-                    </div>
-                </div>
+        });
+}
+
+function checkMediaStatus() {
+    fetch('/api/media/status')
+        .then(response => response.json())
+        .then(data => {
+            const statusElement = document.getElementById('mediaStatus');
+            if (data.enabled && data.accessible) {
+                statusElement.innerHTML = `
+                    <i class="fas fa-check-circle text-success me-1"></i>
+                    Volumen Montado<br>
+                    <small class="text-muted">${data.message}</small>
+                `;
+            } else if (data.enabled && !data.accessible) {
+                statusElement.innerHTML = `
+                    <i class="fas fa-exclamation-triangle text-warning me-1"></i>
+                    Volumen Inaccesible<br>
+                    <small class="text-muted">${data.error}</small>
+                `;
+            } else {
+                statusElement.innerHTML = `
+                    <i class="fas fa-info-circle text-info me-1"></i>
+                    No Configurado<br>
+                    <small class="text-muted">Solo subida local</small>
+                `;
+            }
+        })
+        .catch(error => {
+            document.getElementById('mediaStatus').innerHTML = `
+                <i class="fas fa-times-circle text-danger me-1"></i>
+                Error de Verificación
             `;
-        }
-    } catch (error) {
-        const container = document.getElementById('media-status-container');
-        container.innerHTML = `
-            <div class="d-flex align-items-center text-danger">
-                <i class="fas fa-times-circle me-2"></i>
-                <div>
-                    <strong>Error al verificar volumen</strong>
-                    <br>
-                    <small class="text-muted">No se pudo conectar con el servidor</small>
-                </div>
-            </div>
-        `;
-    }
+        });
 }
 </script>
 {% endblock %}

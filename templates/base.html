@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="es" data-bs-theme="light">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}SyncDub MVP{% endblock %}</title>
     
     <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <!-- Custom CSS -->
@@ -28,7 +28,7 @@
             </button>
             
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('main.index') }}">
                             <i class="fas fa-home me-1"></i>Inicio
@@ -40,8 +40,16 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('main.about') }}">
-                            <i class="fas fa-info-circle me-1"></i>Acerca de
+                        <a class="nav-link" href="{{ url_for('main.status') }}">
+                            <i class="fas fa-tasks me-1"></i>Estado
+                        </a>
+                    </li>
+                </ul>
+                
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/api/system-info" target="_blank">
+                            <i class="fas fa-info-circle me-1"></i>Sistema
                         </a>
                     </li>
                 </ul>
@@ -49,50 +57,23 @@
         </div>
     </nav>
 
-    <!-- Toast Container -->
-    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1055;">
-        <div id="notification-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
-            <div class="toast-header">
-                <i id="toast-icon" class="fas fa-info-circle text-primary me-2"></i>
-                <strong id="toast-title" class="me-auto">Notificación</strong>
-                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
-            </div>
-            <div id="toast-body" class="toast-body">
-                Mensaje de notificación
-            </div>
-        </div>
-    </div>
-
     <!-- Main Content -->
-    <main class="container my-4">
+    <main class="container-fluid py-4">
         {% block content %}{% endblock %}
     </main>
 
     <!-- Footer -->
-    <footer class="bg-light py-4 mt-5">
+    <footer class="bg-light text-center py-3 mt-5">
         <div class="container">
-            <div class="row">
-                <div class="col-md-6">
-                    <h6 class="text-primary">
-                        <i class="fas fa-film me-2"></i>
-                        SyncDub MVP
-                    </h6>
-                    <p class="text-muted small mb-0">
-                        Sincronización inteligente de audio entre versiones originales y dobladas
-                    </p>
-                </div>
-                <div class="col-md-6 text-md-end">
-                    <p class="text-muted small mb-0">
-                        <i class="fas fa-robot me-1"></i>
-                        Powered by OpenAI Whisper & Sentence Transformers
-                    </p>
-                </div>
-            </div>
+            <p class="text-muted mb-0">
+                <i class="fas fa-sync-alt me-2"></i>
+                SyncDub MVP - Sincronización inteligente de audio con IA
+            </p>
         </div>
     </footer>
 
     <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Custom JS -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     

@@ -1,4 +1,4 @@
-# Requirements optimizados para SyncDub MVP
+# Requirements para SyncDub MVP con soporte GPU
 # Versiones específicas para estabilidad y rendimiento
 
 # Framework web
@@ -14,17 +14,18 @@ Flask-CORS==4.0.0
 Pillow==10.0.1
 python-magic==0.4.27
 
-# IA y Machine Learning (versiones optimizadas)
+# IA y Machine Learning con soporte GPU
 openai-whisper==20231117
 sentence-transformers==2.2.2
 
-# PyTorch (CPU only para reducir tamaño)
-torch==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
-torchaudio==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
+# PyTorch con soporte GPU (CUDA 12.1 for CUDA 12.6 compatibility)
+torch==2.2.0+cu121
+torchaudio==2.2.0+cu121
+torchvision==0.17.0+cu121
 
 # Dependencias de ML
-numpy==1.24.4
-scipy==1.11.4
+numpy==1.26.4
+scipy==1.13.1
 scikit-learn==1.3.2
 transformers==4.35.2
 tokenizers==0.15.0
@@ -57,3 +58,5 @@ tqdm==4.66.1
 click==8.1.7
 packaging==23.2
 
+# Dependencias adicionales para GPU
+nvidia-ml-py3==7.352.0

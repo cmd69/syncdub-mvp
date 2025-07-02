@@ -29,236 +29,244 @@
                         </div>
                     </div>
 
-                    <!-- Video Original Section -->
-                    <div class="row mb-4">
+                    <div class="row g-4">
+                        <!-- Original Video -->
                         <div class="col-md-6">
-                            <h5 class="text-primary mb-3">
-                                <i class="fas fa-film me-2"></i>
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-film me-2 text-primary"></i>
                                 Video Original
-                            </h5>
+                            </label>
                             
-                            <!-- Source Selection for Original -->
-                            <div class="source-selection mb-3">
-                                <h6 class="mb-2">Seleccionar Fuente:</h6>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="original_source" 
-                                           id="originalUpload" value="upload" checked>
-                                    <label class="form-check-label" for="originalUpload">
-                                        <i class="fas fa-upload me-1"></i>
-                                        Subir desde mi equipo
+                            <!-- Source Selection -->
+                            <div class="mb-3">
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="original_source" id="original_upload" value="upload" checked>
+                                    <label class="btn btn-outline-primary" for="original_upload">
+                                        <i class="fas fa-upload me-1"></i>Subir Archivo
                                     </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="original_source" 
-                                           id="originalVolume" value="volume">
-                                    <label class="form-check-label" for="originalVolume">
-                                        <i class="fas fa-server me-1"></i>
-                                        Seleccionar del servidor
+                                    
+                                    {% if media_enabled %}
+                                    <input type="radio" class="btn-check" name="original_source" id="original_volume" value="volume">
+                                    <label class="btn btn-outline-primary" for="original_volume">
+                                        <i class="fas fa-folder me-1"></i>Desde Servidor
                                     </label>
+                                    {% endif %}
                                 </div>
                             </div>
-
-                            <!-- Upload Area for Original -->
-                            <div id="originalUploadArea" class="upload-area mb-3">
-                                <input type="file" id="originalVideo" name="original_video" accept="video/*">
-                                <div class="upload-content">
-                                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
-                                    <h6>Arrastra tu video aquí</h6>
-                                    <p class="text-muted mb-2">o haz clic para seleccionar</p>
-                                    <small class="text-muted">MP4, AVI, MKV, MOV (máx. 8GB)</small>
+                            
+                            <!-- Upload Area -->
+                            <div class="upload-area" id="originalUploadArea">
+                                <input type="file" class="form-control" id="originalVideo" name="original_video" 
+                                       accept=".mp4,.avi,.mkv,.mov,.wmv,.flv,.webm">
+                                <div class="upload-placeholder">
+                                    <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                                    <p class="text-muted mb-0">Selecciona el video original</p>
+                                    <small class="text-muted">MP4, AVI, MKV, MOV, WMV, FLV, WebM (máx. 20GB)</small>
+                                </div>
+                                <div class="file-info d-none">
+                                    <i class="fas fa-file-video me-2 text-success"></i>
+                                    <span class="filename"></span>
+                                    <small class="filesize text-muted ms-2"></small>
                                 </div>
                             </div>
-
-                            <!-- Volume Browser for Original -->
-                            <div id="originalVolumeArea" class="volume-area d-none">
-                                <div class="media-status mb-2">
-                                    <div id="originalMediaStatus" class="alert alert-info">
-                                        <i class="fas fa-spinner fa-spin me-2"></i>
-                                        Verificando disponibilidad del volumen...
-                                    </div>
-                                </div>
-                                <div id="originalBreadcrumb" class="breadcrumb-custom d-none">
+                            
+                            <!-- Volume Selection -->
+                            {% if media_enabled %}
+                            <div class="volume-area d-none" id="originalVolumeArea">
+                                <!-- Navigation -->
+                                <div class="directory-navigation mb-2">
                                     <nav aria-label="breadcrumb">
-                                        <ol class="breadcrumb mb-0">
+                                        <ol class="breadcrumb mb-0" id="originalBreadcrumb">
                                             <li class="breadcrumb-item">
-                                                <a href="#" data-path="" class="navigate-link">
-                                                    <i class="fas fa-home"></i> Inicio
-                                                </a>
+                                                <a href="#" data-path="">Inicio</a>
                                             </li>
                                         </ol>
                                     </nav>
                                 </div>
-                                <div id="originalMediaBrowser" class="media-browser d-none">
-                                    <!-- Content loaded dynamically -->
-                                </div>
-                            </div>
-
-                            <!-- File Info for Original -->
-                            <div id="originalFileInfo" class="file-info d-none">
-                                <div class="d-flex align-items-center">
-                                    <i class="fas fa-file-video text-primary me-2"></i>
-                                    <div>
-                                        <div class="file-name"></div>
-                                        <div class="file-size"></div>
+                                
+                                <!-- File Browser -->
+                                <div class="file-browser border rounded p-2" style="height: 200px; overflow-y: auto;">
+                                    <div id="originalFileList">
+                                        <div class="text-center text-muted">
+                                            <i class="fas fa-spinner fa-spin me-2"></i>
+                                            Cargando archivos...
+                                        </div>
                                     </div>
                                 </div>
+                                
+                                <!-- Selected File Info -->
+                                <div class="volume-info mt-2 d-none" id="originalVolumeInfo">
+                                    <small class="text-info">
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        <span id="originalSelectedFile"></span>
+                                    </small>
+                                </div>
+                                
+                                <input type="hidden" id="originalVolumeFile" name="original_volume_file">
                             </div>
+                            {% endif %}
                         </div>
-
-                        <!-- Video Doblado Section -->
+                        
+                        <!-- Dubbed Video -->
                         <div class="col-md-6">
-                            <h5 class="text-success mb-3">
-                                <i class="fas fa-microphone me-2"></i>
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-film me-2 text-success"></i>
                                 Video Doblado
-                            </h5>
+                            </label>
                             
-                            <!-- Source Selection for Dubbed -->
-                            <div class="source-selection mb-3">
-                                <h6 class="mb-2">Seleccionar Fuente:</h6>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="dubbed_source" 
-                                           id="dubbedUpload" value="upload" checked>
-                                    <label class="form-check-label" for="dubbedUpload">
-                                        <i class="fas fa-upload me-1"></i>
-                                        Subir desde mi equipo
+                            <!-- Source Selection -->
+                            <div class="mb-3">
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="dubbed_source" id="dubbed_upload" value="upload" checked>
+                                    <label class="btn btn-outline-success" for="dubbed_upload">
+                                        <i class="fas fa-upload me-1"></i>Subir Archivo
                                     </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="dubbed_source" 
-                                           id="dubbedVolume" value="volume">
-                                    <label class="form-check-label" for="dubbedVolume">
-                                        <i class="fas fa-server me-1"></i>
-                                        Seleccionar del servidor
+                                    
+                                    {% if media_enabled %}
+                                    <input type="radio" class="btn-check" name="dubbed_source" id="dubbed_volume" value="volume">
+                                    <label class="btn btn-outline-success" for="dubbed_volume">
+                                        <i class="fas fa-folder me-1"></i>Desde Servidor
                                     </label>
+                                    {% endif %}
                                 </div>
                             </div>
-
-                            <!-- Upload Area for Dubbed -->
-                            <div id="dubbedUploadArea" class="upload-area mb-3">
-                                <input type="file" id="dubbedVideo" name="dubbed_video" accept="video/*">
-                                <div class="upload-content">
-                                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
-                                    <h6>Arrastra tu video aquí</h6>
-                                    <p class="text-muted mb-2">o haz clic para seleccionar</p>
-                                    <small class="text-muted">MP4, AVI, MKV, MOV (máx. 8GB)</small>
+                            
+                            <!-- Upload Area -->
+                            <div class="upload-area" id="dubbedUploadArea">
+                                <input type="file" class="form-control" id="dubbedVideo" name="dubbed_video" 
+                                       accept=".mp4,.avi,.mkv,.mov,.wmv,.flv,.webm">
+                                <div class="upload-placeholder">
+                                    <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                                    <p class="text-muted mb-0">Selecciona el video doblado</p>
+                                    <small class="text-muted">MP4, AVI, MKV, MOV, WMV, FLV, WebM (máx. 20GB)</small>
+                                </div>
+                                <div class="file-info d-none">
+                                    <i class="fas fa-file-video me-2 text-success"></i>
+                                    <span class="filename"></span>
+                                    <small class="filesize text-muted ms-2"></small>
                                 </div>
                             </div>
-
-                            <!-- Volume Browser for Dubbed -->
-                            <div id="dubbedVolumeArea" class="volume-area d-none">
-                                <div class="media-status mb-2">
-                                    <div id="dubbedMediaStatus" class="alert alert-info">
-                                        <i class="fas fa-spinner fa-spin me-2"></i>
-                                        Verificando disponibilidad del volumen...
-                                    </div>
-                                </div>
-                                <div id="dubbedBreadcrumb" class="breadcrumb-custom d-none">
+                            
+                            <!-- Volume Selection -->
+                            {% if media_enabled %}
+                            <div class="volume-area d-none" id="dubbedVolumeArea">
+                                <!-- Navigation -->
+                                <div class="directory-navigation mb-2">
                                     <nav aria-label="breadcrumb">
-                                        <ol class="breadcrumb mb-0">
+                                        <ol class="breadcrumb mb-0" id="dubbedBreadcrumb">
                                             <li class="breadcrumb-item">
-                                                <a href="#" data-path="" class="navigate-link">
-                                                    <i class="fas fa-home"></i> Inicio
-                                                </a>
+                                                <a href="#" data-path="">Inicio</a>
                                             </li>
                                         </ol>
                                     </nav>
                                 </div>
-                                <div id="dubbedMediaBrowser" class="media-browser d-none">
-                                    <!-- Content loaded dynamically -->
-                                </div>
-                            </div>
-
-                            <!-- File Info for Dubbed -->
-                            <div id="dubbedFileInfo" class="file-info d-none">
-                                <div class="d-flex align-items-center">
-                                    <i class="fas fa-file-video text-success me-2"></i>
-                                    <div>
-                                        <div class="file-name"></div>
-                                        <div class="file-size"></div>
+                                
+                                <!-- File Browser -->
+                                <div class="file-browser border rounded p-2" style="height: 200px; overflow-y: auto;">
+                                    <div id="dubbedFileList">
+                                        <div class="text-center text-muted">
+                                            <i class="fas fa-spinner fa-spin me-2"></i>
+                                            Cargando archivos...
+                                        </div>
                                     </div>
                                 </div>
+                                
+                                <!-- Selected File Info -->
+                                <div class="volume-info mt-2 d-none" id="dubbedVolumeInfo">
+                                    <small class="text-info">
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        <span id="dubbedSelectedFile"></span>
+                                    </small>
+                                </div>
+                                
+                                <input type="hidden" id="dubbedVolumeFile" name="dubbed_volume_file">
                             </div>
+                            {% endif %}
                         </div>
                     </div>
-
+                    
                     <!-- Submit Button -->
-                    <div class="text-center">
-                        <button type="submit" id="submitBtn" class="btn btn-primary btn-lg" disabled>
+                    <div class="text-center mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>
                             <i class="fas fa-sync-alt me-2"></i>
                             Iniciar Sincronización
                         </button>
                     </div>
                 </form>
-
+                
                 <!-- Progress Section -->
-                <div id="progressSection" class="progress-container d-none">
-                    <h5 class="text-center mb-3">
-                        <i class="fas fa-cogs me-2"></i>
-                        Procesando Sincronización
-                    </h5>
-                    <div class="progress mb-3">
-                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
-                             role="progressbar" style="width: 0%"></div>
-                    </div>
-                    <div id="progressMessage" class="text-center text-muted">
-                        Iniciando procesamiento...
+                <div id="progressSection" class="d-none mt-4">
+                    <div class="alert alert-info">
+                        <h6 class="alert-heading">
+                            <i class="fas fa-cogs me-2"></i>
+                            Procesando...
+                        </h6>
+                        <div class="progress mb-2">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="progressBar" role="progressbar" style="width: 0%">
+                            </div>
+                        </div>
+                        <p class="mb-0" id="progressMessage">Iniciando procesamiento...</p>
                     </div>
                 </div>
-
+                
                 <!-- Result Section -->
-                <div id="resultSection" class="d-none">
-                    <div class="alert alert-success text-center">
-                        <h5 class="alert-heading">
+                <div id="resultSection" class="d-none mt-4">
+                    <div class="alert alert-success">
+                        <h6 class="alert-heading">
                             <i class="fas fa-check-circle me-2"></i>
                             ¡Sincronización Completada!
-                        </h5>
-                        <p class="mb-3">Tu video ha sido sincronizado exitosamente.</p>
-                        <button id="downloadBtn" class="btn btn-success">
-                            <i class="fas fa-download me-2"></i>
-                            Descargar Video Sincronizado
-                        </button>
+                        </h6>
+                        <p class="mb-3">El archivo ha sido procesado exitosamente.</p>
+                        <div class="d-flex gap-2">
+                            <a href="#" class="btn btn-success" id="downloadBtn">
+                                <i class="fas fa-download me-2"></i>
+                                Descargar Archivo Sincronizado
+                            </a>
+                            <span class="badge bg-info fs-6 align-self-center" id="customNameBadge"></span>
+                        </div>
                     </div>
                 </div>
-
+                
                 <!-- Error Section -->
-                <div id="errorSection" class="d-none">
-                    <div class="alert alert-danger text-center">
-                        <h5 class="alert-heading">
+                <div id="errorSection" class="d-none mt-4">
+                    <div class="alert alert-danger">
+                        <h6 class="alert-heading">
                             <i class="fas fa-exclamation-triangle me-2"></i>
                             Error en el Procesamiento
-                        </h5>
-                        <p id="errorMessage" class="mb-3">Ha ocurrido un error durante el procesamiento.</p>
-                        <button type="button" class="btn btn-outline-danger" onclick="location.reload()">
-                            <i class="fas fa-redo me-2"></i>
-                            Intentar de Nuevo
-                        </button>
+                        </h6>
+                        <p class="mb-0" id="errorMessage">Ha ocurrido un error durante el procesamiento.</p>
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- Info Section -->
-        <div class="row mt-4">
-            <div class="col-md-6">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-body">
+        
+        <!-- Instructions -->
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Instrucciones
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
                         <h6>📁 Fuentes de Video:</h6>
-                        <ul class="list-unstyled mb-0">
+                        <ul class="list-unstyled mb-3">
                             <li class="mb-1">
                                 <i class="fas fa-upload text-primary me-2"></i>
-                                <strong>Subir:</strong> Desde tu equipo local
+                                <strong>Subir:</strong> Desde tu equipo local (máx. 20GB)
                             </li>
+                            {% if media_enabled %}
                             <li class="mb-1">
-                                <i class="fas fa-server text-success me-2"></i>
-                                <strong>Servidor:</strong> Desde volumen configurado
+                                <i class="fas fa-folder text-success me-2"></i>
+                                <strong>Servidor:</strong> Desde volumen montado
                             </li>
+                            {% endif %}
                         </ul>
                     </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-body">
+                    <div class="col-md-6">
                         <h6>⚙️ Configuración:</h6>
                         <ul class="list-unstyled mb-0">
                             <li class="mb-1">
@@ -268,6 +276,10 @@
                             <li class="mb-1">
                                 <i class="fas fa-file-video text-warning me-2"></i>
                                 Resultado siempre en formato MKV
+                            </li>
+                            <li class="mb-1">
+                                <i class="fas fa-microchip text-success me-2"></i>
+                                Procesamiento acelerado con GPU
                             </li>
                         </ul>
                     </div>

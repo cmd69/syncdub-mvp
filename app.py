@@ -1,5 +1,5 @@
 """
-Aplicación principal SyncDub MVP - Versión optimizada
+Aplicación principal SyncDub MVP - Versión GPU optimizada
 """
 
 import os
@@ -33,7 +33,7 @@ def create_app(config_name=None):
     # Configurar logging optimizado
     if not app.debug:
         logging.basicConfig(
-            level=logging.INFO,
+            level=getattr(logging, app.config.get('LOG_LEVEL', 'INFO')),
             format='%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
         )
     
@@ -43,66 +43,6 @@ def create_app(config_name=None):
     # Registrar blueprints
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp, url_prefix='/api')
-    
-    # Endpoint de salud para healthcheck
-    @app.route('/api/health')
-    def health_check():
-        """Endpoint de salud para Docker healthcheck"""
-        try:
-            # Verificar directorios críticos
-            critical_dirs = [
-                app.config['UPLOAD_FOLDER'],
-                app.config['OUTPUT_FOLDER'],
-                app.config['MODELS_FOLDER']
-            ]
-            
-            for directory in critical_dirs:
-                if not directory.exists():
-                    return jsonify({
-                        'status': 'unhealthy',
-                        'error': f'Directory not found: {directory}'
-                    }), 503
-            
-            # Verificar memoria disponible
-            import psutil
-            memory = psutil.virtual_memory()
-            if memory.percent > 95:
-                return jsonify({
-                    'status': 'warning',
-                    'message': f'High memory usage: {memory.percent:.1f}%'
-                }), 200
-            
-            return jsonify({
-                'status': 'healthy',
-                'memory_usage': f'{memory.percent:.1f}%',
-                'available_memory': f'{memory.available / (1024**3):.1f}GB'
-            }), 200
-            
-        except Exception as e:
-            return jsonify({
-                'status': 'unhealthy',
-                'error': str(e)
-            }), 503
-    
-    # Endpoint de información del sistema
-    @app.route('/api/system-info')
-    def system_info():
-        """Información del sistema para debugging"""
-        try:
-            import psutil
-            import platform
-            
-            return jsonify({
-                'platform': platform.platform(),
-                'python_version': platform.python_version(),
-                'cpu_count': psutil.cpu_count(),
-                'memory_total': f'{psutil.virtual_memory().total / (1024**3):.1f}GB',
-                'memory_available': f'{psutil.virtual_memory().available / (1024**3):.1f}GB',
-                'memory_percent': f'{psutil.virtual_memory().percent:.1f}%',
-                'disk_usage': f'{psutil.disk_usage("/").percent:.1f}%'
-            })
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
     
     # Configurar el servicio de sincronización con la app
     from app.services.sync_service import sync_service
@@ -115,7 +55,7 @@ app = create_app()
 
 if __name__ == '__main__':
     # Configuración optimizada para producción
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('APP_PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'
     
     app.run(

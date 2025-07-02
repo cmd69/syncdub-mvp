@@ -1,89 +1,102 @@
-version: '3.8'
-
 services:
   syncdub-app:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
       args:
         PUID: ${PUID:-1000}
         PGID: ${PGID:-1000}
-    container_name: syncdub-mvp
+
+    container_name: ${CONTAINER_NAME:-syncdub-mvp}
     ports:
       - "${APP_PORT:-5000}:5000"
+
     volumes:
-      # Application data volumes
       - ${UPLOADS_DIR:-./uploads}:/app/uploads
       - ${OUTPUT_DIR:-./output}:/app/output
       - ${MODELS_DIR:-./models}:/app/models
-      # Media source volume (NFS mount point)
-      - ${MEDIA_SOURCE_PATH:-./media}:/app/video_source
+      - ${MEDIA_SOURCE_PATH:-./video_source}:/app/video_source  # Montaje NFS ya configurado en host
+
     environment:
       - FLASK_ENV=${FLASK_ENV:-production}
       - SECRET_KEY=${SECRET_KEY:-syncdub-secret-key-2024}
+      - APP_PORT=${APP_PORT:-5000}
       - MEDIA_SOURCE_ENABLED=${MEDIA_SOURCE_ENABLED:-false}
       - MEDIA_SOURCE_PATH=/app/video_source
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
-      # Configuraciones de memoria y rendimiento
+      - MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-21474836480}
+      - ALLOWED_EXTENSIONS=${ALLOWED_EXTENSIONS:-mp4,avi,mkv,mov,wmv,flv,webm}
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - SENTENCE_TRANSFORMER_MODEL=${SENTENCE_TRANSFORMER_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
+      - SIMILARITY_THRESHOLD=${SIMILARITY_THRESHOLD:-0.7}
+      - AUDIO_SAMPLE_RATE=${AUDIO_SAMPLE_RATE:-16000}
+      - AUDIO_FORMAT=${AUDIO_FORMAT:-wav}
+      - OUTPUT_AUDIO_BITRATE=${OUTPUT_AUDIO_BITRATE:-192k}
+      - NUM_THREADS=${NUM_THREADS:-0}
+      - AUDIO_CHUNK_SIZE=${AUDIO_CHUNK_SIZE:-60}
+      - MAX_PROCESSING_TIME=${MAX_PROCESSING_TIME:-3600}
+      - AUTO_CLEANUP=${AUTO_CLEANUP:-true}
+      - TASK_RETENTION_HOURS=${TASK_RETENTION_HOURS:-24}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - FFMPEG_VERBOSE=${FFMPEG_VERBOSE:-false}
+      - MEMORY_MONITORING=${MEMORY_MONITORING:-true}
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - MALLOC_TRIM_THRESHOLD_=100000
       - MALLOC_MMAP_THRESHOLD_=100000
-      - OMP_NUM_THREADS=2
-      - MKL_NUM_THREADS=2
-      - NUMEXPR_MAX_THREADS=2
-    # Configuraciones de recursos para evitar OOM
-    deploy:
-      resources:
-        limits:
-          memory: 6G
-          cpus: '2.0'
-        reservations:
-          memory: 1G
-          cpus: '0.5'
-    # Configuraciones adicionales de memoria
-    mem_limit: 6g
-    mem_reservation: 1g
-    memswap_limit: 6g
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-2}
+      - MKL_NUM_THREADS=${MKL_NUM_THREADS:-2}
+      - NUMEXPR_MAX_THREADS=${NUMEXPR_MAX_THREADS:-2}
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+
+    runtime: nvidia
+
+    mem_limit: ${MAX_MEMORY:-8G}
+    mem_reservation: ${RESERVED_MEMORY:-2G}
+    memswap_limit: ${MAX_MEMORY:-8G}
     oom_kill_disable: false
-    # Configuraciones de red
+
     networks:
-      - syncdub-network
-    # Política de reinicio
-    restart: unless-stopped
-    # Configuraciones de seguridad
+      - ${NETWORK_NAME:-syncdub-network}
+
+    restart: ${RESTART_POLICY:-unless-stopped}
+
     security_opt:
       - no-new-privileges:true
-    # Healthcheck
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    # Configuraciones de logging para evitar llenar disco
+      interval: ${HEALTHCHECK_INTERVAL:-30s}
+      timeout: ${HEALTHCHECK_TIMEOUT:-10s}
+      retries: ${HEALTHCHECK_RETRIES:-3}
+      start_period: ${HEALTHCHECK_START_PERIOD:-60s}
+
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: ${LOG_MAX_SIZE:-10m}
+        max-file: ${LOG_MAX_FILES:-3}
 
-# Red personalizada
 networks:
   syncdub-network:
+    name: ${NETWORK_NAME:-syncdub-network}
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
-# Volúmenes nombrados para persistencia
+        - subnet: ${NETWORK_SUBNET:-172.20.0.0/16}
+
 volumes:
   uploads:
+    name: ${UPLOADS_VOLUME:-syncdub_uploads}
     driver: local
   output:
+    name: ${OUTPUT_VOLUME:-syncdub_output}
     driver: local
   models:
+    name: ${MODELS_VOLUME:-syncdub_models}
     driver: local
   video_source:
+    name: ${MEDIA_VOLUME:-syncdub_media}
     driver: local
-

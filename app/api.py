@@ -7,150 +7,302 @@ import uuid
 import json
 from flask import Blueprint, request, jsonify, current_app, send_file
 from werkzeug.utils import secure_filename
-from app.services.sync_service import SyncService
-from app.utils.file_utils import allowed_file, get_file_extension, list_directory_contents, check_directory_permissions
+from app.services.sync_service import sync_service
+from app.utils.file_utils import (
+    allowed_file, get_file_extension, list_video_files, 
+    get_full_path, check_media_source_access, validate_custom_filename
+)
 
 bp = Blueprint('api', __name__)
 
-# Instancia del servicio de sincronización
-sync_service = SyncService()
+@bp.route('/health')
+def health_check():
+    """Endpoint de salud para Docker healthcheck"""
+    try:
+        # Verificar directorios críticos
+        critical_dirs = [
+            current_app.config['UPLOAD_FOLDER'],
+            current_app.config['OUTPUT_FOLDER'],
+            current_app.config['MODELS_FOLDER']
+        ]
+        
+        for directory in critical_dirs:
+            if not directory.exists():
+                return jsonify({
+                    'status': 'unhealthy',
+                    'error': f'Directory not found: {directory}'
+                }), 503
+        
+        # Verificar memoria disponible
+        import psutil
+        memory = psutil.virtual_memory()
+        if memory.percent > 95:
+            return jsonify({
+                'status': 'warning',
+                'message': f'High memory usage: {memory.percent:.1f}%'
+            }), 200
+        
+        return jsonify({
+            'status': 'healthy',
+            'memory_usage': f'{memory.percent:.1f}%',
+            'available_memory': f'{memory.available / (1024**3):.1f}GB'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e)
+        }), 503
 
-@bp.route('/media/status', methods=['GET'])
-def check_media_status():
-    """Verificar disponibilidad del volumen de media"""
+@bp.route('/system-info')
+def system_info():
+    """Información del sistema para debugging"""
+    try:
+        import psutil
+        import platform
+        import torch
+        
+        gpu_info = "No disponible"
+        if torch.cuda.is_available():
+            gpu_count = torch.cuda.device_count()
+            gpu_name = torch.cuda.get_device_name(0) if gpu_count > 0 else "Unknown"
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3) if gpu_count > 0 else 0
+            gpu_info = f"{gpu_count}x {gpu_name} ({gpu_memory:.1f}GB)"
+        
+        return jsonify({
+            'platform': platform.platform(),
+            'python_version': platform.python_version(),
+            'cpu_count': psutil.cpu_count(),
+            'memory_total': f'{psutil.virtual_memory().total / (1024**3):.1f}GB',
+            'memory_available': f'{psutil.virtual_memory().available / (1024**3):.1f}GB',
+            'memory_percent': f'{psutil.virtual_memory().percent:.1f}%',
+            'disk_usage': f'{psutil.disk_usage("/").percent:.1f}%',
+            'gpu_info': gpu_info,
+            'torch_version': torch.__version__ if 'torch' in globals() else 'No disponible'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/media/status')
+def media_status():
+    """Verificar estado del volumen de medios"""
     try:
         media_enabled = current_app.config.get('MEDIA_SOURCE_ENABLED', False)
-        media_path = current_app.config.get('MEDIA_SOURCE_PATH', '')
         
         if not media_enabled:
             return jsonify({
+                'enabled': False,
+                'message': 'Volumen de medios no configurado'
+            })
+        
+        media_path = current_app.config.get('MEDIA_SOURCE_PATH')
+        if not media_path:
+            return jsonify({
+                'enabled': False,
+                'error': 'MEDIA_SOURCE_PATH no configurado'
+            })
+        
+        # Verificar acceso al directorio
+        accessible, message = check_media_source_access(media_path)
+        
+        if accessible:
+            # Contar archivos de video
+            try:
+                items = list_video_files(media_path)
+                video_count = len([item for item in items if item['type'] == 'file'])
+                dir_count = len([item for item in items if item['type'] == 'directory' and not item.get('is_parent', False)])
+                
+                return jsonify({
+                    'enabled': True,
+                    'accessible': True,
+                    'path': media_path,
+                    'video_count': video_count,
+                    'directory_count': dir_count,
+                    'message': f'{video_count} videos encontrados'
+                })
+            except Exception as e:
+                return jsonify({
+                    'enabled': True,
+                    'accessible': False,
+                    'path': media_path,
+                    'error': f'Error listando contenido: {str(e)}'
+                })
+        else:
+            return jsonify({
+                'enabled': True,
                 'accessible': False,
-                'message': 'Volumen de media no configurado',
-                'path': ''
-            }), 200
-        
-        has_access, message = check_directory_permissions(media_path)
-        
-        return jsonify({
-            'accessible': has_access,
-            'message': message,
-            'path': media_path
-        }), 200
-        
+                'path': media_path,
+                'error': message
+            })
+            
     except Exception as e:
         current_app.logger.error(f"Error checking media status: {str(e)}")
-        return jsonify({
-            'accessible': False,
-            'message': 'Error al verificar volumen de media',
-            'path': ''
-        }), 200
+        return jsonify({'error': 'Error interno del servidor'}), 500
 
-@bp.route('/media/list', methods=['GET'])
+@bp.route('/media/list')
 def list_media_files():
-    """Listar archivos de media disponibles"""
+    """Listar archivos de video en el volumen de medios"""
     try:
         media_enabled = current_app.config.get('MEDIA_SOURCE_ENABLED', False)
-        media_path = current_app.config.get('MEDIA_SOURCE_PATH', '')
-        
         if not media_enabled:
-            return jsonify({'error': 'Volumen de media no configurado'}), 400
+            return jsonify({'error': 'Volumen de medios no habilitado'}), 400
         
-        current_path = request.args.get('path', '')
-        contents = list_directory_contents(media_path, current_path)
+        media_base_path = current_app.config.get('MEDIA_SOURCE_PATH')
+        if not media_base_path:
+            return jsonify({'error': 'MEDIA_SOURCE_PATH no configurado'}), 400
+        
+        # Obtener ruta relativa del parámetro
+        relative_path = request.args.get('path', '')
+        
+        # Construir ruta completa y segura
+        full_path = get_full_path(media_base_path, relative_path)
+        
+        # Verificar acceso
+        accessible, message = check_media_source_access(full_path)
+        if not accessible:
+            return jsonify({'error': message}), 403
+        
+        # Listar archivos y directorios
+        items = list_video_files(full_path, relative_path)
+        
+        # Información de navegación
+        current_path_parts = relative_path.split('/') if relative_path else []
+        breadcrumbs = []
+        path_so_far = ""
+        
+        # Agregar raíz
+        breadcrumbs.append({'name': 'Inicio', 'path': ''})
+        
+        # Agregar partes del path actual
+        for part in current_path_parts:
+            if part:
+                path_so_far = f"{path_so_far}/{part}" if path_so_far else part
+                breadcrumbs.append({'name': part, 'path': path_so_far})
         
         return jsonify({
-            'directories': contents['directories'],
-            'videos': contents['videos'],
-            'current_path': contents['current_path'],
-            'parent_path': contents['parent_path'],
-            'total_videos': len(contents['videos']),
-            'total_directories': len(contents['directories'])
-        }), 200
+            'items': items,
+            'current_path': relative_path,
+            'breadcrumbs': breadcrumbs,
+            'total_items': len(items)
+        })
         
     except Exception as e:
         current_app.logger.error(f"Error listing media files: {str(e)}")
-        return jsonify({'error': 'Error al listar archivos de media'}), 500
+        return jsonify({'error': 'Error listando archivos'}), 500
 
 @bp.route('/upload', methods=['POST'])
 def upload_files():
-    """Endpoint para procesar archivos de video"""
+    """Endpoint para subir archivos de video o seleccionar desde volumen"""
     try:
         # Obtener configuración de fuentes
-        original_source = request.form.get('original_source', 'upload')
+        original_source = request.form.get('original_source', 'upload')  # 'upload' o 'volume'
         dubbed_source = request.form.get('dubbed_source', 'upload')
-        custom_filename = request.form.get('custom_filename', '')
         
-        original_path = ''
-        dubbed_path = ''
+        # Nombre personalizado para archivo destino
+        custom_filename = request.form.get('custom_filename', '').strip()
         
-        # Procesar video original
+        # Validar nombre personalizado si se proporciona
+        if custom_filename:
+            is_valid, clean_name = validate_custom_filename(custom_filename)
+            if not is_valid:
+                return jsonify({'error': f'Nombre de archivo inválido: {clean_name}'}), 400
+            custom_filename = clean_name
+        
+        # Generar ID único para la tarea
+        task_id = str(uuid.uuid4())
+        
+        # Crear directorio para esta tarea
+        task_dir = current_app.config['UPLOAD_FOLDER'] / task_id
+        task_dir.mkdir(exist_ok=True)
+        
+        # Procesar archivo original
         if original_source == 'upload':
             if 'original_video' not in request.files:
-                return jsonify({'error': 'No se encontró el archivo de video original'}), 400
-            
+                return jsonify({'error': 'Se requiere archivo original'}), 400
             original_file = request.files['original_video']
             if original_file.filename == '':
                 return jsonify({'error': 'No se seleccionó archivo original'}), 400
-            
             if not allowed_file(original_file.filename):
-                return jsonify({'error': 'Formato de archivo original no válido'}), 400
+                return jsonify({'error': 'Formato de archivo original no soportado'}), 400
             
-            # Guardar archivo original
-            filename = secure_filename(original_file.filename)
-            original_path = os.path.join(current_app.config['UPLOAD_FOLDER'], f"original_{uuid.uuid4()}_{filename}")
-            original_file.save(original_path)
+            original_filename = secure_filename(original_file.filename)
+            original_path = task_dir / f"original_{original_filename}"
+            original_file.save(str(original_path))
             
-        elif original_source == 'volume':
-            original_path = request.form.get('original_path', '')
-            if not original_path:
-                return jsonify({'error': 'No se especificó la ruta del archivo original'}), 400
+        else:  # volume
+            original_filename = request.form.get('original_volume_file')
+            if not original_filename:
+                return jsonify({'error': 'Se requiere seleccionar archivo original del volumen'}), 400
             
-            # Construir ruta completa
-            media_base = current_app.config.get('MEDIA_SOURCE_PATH', '')
-            original_path = os.path.join(media_base, original_path)
+            media_base_path = current_app.config.get('MEDIA_SOURCE_PATH')
+            if not media_base_path:
+                return jsonify({'error': 'Volumen de medios no configurado'}), 400
             
-            if not os.path.exists(original_path):
-                return jsonify({'error': 'El archivo original no existe en el volumen'}), 400
+            original_path = get_full_path(media_base_path, original_filename)
+            if not os.path.exists(original_path) or not os.path.isfile(original_path):
+                return jsonify({'error': 'Archivo original no encontrado en volumen'}), 400
         
-        # Procesar video doblado
+        # Procesar archivo doblado
         if dubbed_source == 'upload':
             if 'dubbed_video' not in request.files:
-                return jsonify({'error': 'No se encontró el archivo de video doblado'}), 400
-            
+                return jsonify({'error': 'Se requiere archivo doblado'}), 400
             dubbed_file = request.files['dubbed_video']
             if dubbed_file.filename == '':
                 return jsonify({'error': 'No se seleccionó archivo doblado'}), 400
-            
             if not allowed_file(dubbed_file.filename):
-                return jsonify({'error': 'Formato de archivo doblado no válido'}), 400
+                return jsonify({'error': 'Formato de archivo doblado no soportado'}), 400
             
-            # Guardar archivo doblado
-            filename = secure_filename(dubbed_file.filename)
-            dubbed_path = os.path.join(current_app.config['UPLOAD_FOLDER'], f"dubbed_{uuid.uuid4()}_{filename}")
-            dubbed_file.save(dubbed_path)
+            dubbed_filename = secure_filename(dubbed_file.filename)
+            dubbed_path = task_dir / f"dubbed_{dubbed_filename}"
+            dubbed_file.save(str(dubbed_path))
             
-        elif dubbed_source == 'volume':
-            dubbed_path = request.form.get('dubbed_path', '')
-            if not dubbed_path:
-                return jsonify({'error': 'No se especificó la ruta del archivo doblado'}), 400
+        else:  # volume
+            dubbed_filename = request.form.get('dubbed_volume_file')
+            if not dubbed_filename:
+                return jsonify({'error': 'Se requiere seleccionar archivo doblado del volumen'}), 400
             
-            # Construir ruta completa
-            media_base = current_app.config.get('MEDIA_SOURCE_PATH', '')
-            dubbed_path = os.path.join(media_base, dubbed_path)
+            media_base_path = current_app.config.get('MEDIA_SOURCE_PATH')
+            if not media_base_path:
+                return jsonify({'error': 'Volumen de medios no configurado'}), 400
             
-            if not os.path.exists(dubbed_path):
-                return jsonify({'error': 'El archivo doblado no existe en el volumen'}), 400
+            dubbed_path = get_full_path(media_base_path, dubbed_filename)
+            if not os.path.exists(dubbed_path) or not os.path.isfile(dubbed_path):
+                return jsonify({'error': 'Archivo doblado no encontrado en volumen'}), 400
         
-        # Crear tarea de sincronización
-        task_id = sync_service.create_task(original_path, dubbed_path, custom_filename)
+        # Verificar tamaño de archivos (máximo 20GB)
+        max_size = 20 * 1024 * 1024 * 1024  # 20GB
+        
+        try:
+            orig_size = os.path.getsize(original_path)
+            dub_size = os.path.getsize(dubbed_path)
+            
+            if orig_size > max_size:
+                return jsonify({'error': f'Archivo original demasiado grande. Máximo: 20GB'}), 400
+            if dub_size > max_size:
+                return jsonify({'error': f'Archivo doblado demasiado grande. Máximo: 20GB'}), 400
+                
+        except OSError as e:
+            return jsonify({'error': f'Error verificando tamaño de archivos: {str(e)}'}), 400
+        
+        # Iniciar procesamiento asíncrono
+        sync_service.start_sync_task(
+            task_id, 
+            str(original_path), 
+            str(dubbed_path),
+            custom_filename=custom_filename
+        )
         
         return jsonify({
             'task_id': task_id,
-            'message': 'Procesamiento iniciado exitosamente'
+            'message': 'Procesamiento iniciado correctamente.',
+            'status': 'processing',
+            'custom_filename': custom_filename,
+            'original_source': original_source,
+            'dubbed_source': dubbed_source
         }), 200
         
     except Exception as e:
-        current_app.logger.error(f"Error in upload: {str(e)}")
+        current_app.logger.error(f"Error en upload_files: {str(e)}")
         return jsonify({'error': 'Error interno del servidor'}), 500
 
 @bp.route('/status/<task_id>')
@@ -160,7 +312,7 @@ def get_status(task_id):
         status = sync_service.get_task_status(task_id)
         return jsonify(status), 200
     except Exception as e:
-        current_app.logger.error(f"Error in get_status: {str(e)}")
+        current_app.logger.error(f"Error en get_status: {str(e)}")
         return jsonify({'error': 'Error al obtener estado'}), 500
 
 @bp.route('/download/<task_id>')
@@ -174,7 +326,7 @@ def download_result(task_id):
         else:
             return jsonify({'error': 'Archivo no encontrado'}), 404
     except Exception as e:
-        current_app.logger.error(f"Error in download_result: {str(e)}")
+        current_app.logger.error(f"Error en download_result: {str(e)}")
         return jsonify({'error': 'Error al descargar archivo'}), 500
 
 @bp.route('/tasks')
@@ -184,6 +336,6 @@ def list_tasks():
         tasks = sync_service.list_all_tasks()
         return jsonify(tasks), 200
     except Exception as e:
-        current_app.logger.error(f"Error in list_tasks: {str(e)}")
+        current_app.logger.error(f"Error en list_tasks: {str(e)}")
         return jsonify({'error': 'Error al listar tareas'}), 500
 

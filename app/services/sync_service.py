@@ -1,6 +1,5 @@
 """
-Servicio optimizado de sincronización de audio con IA
-Versión mejorada para evitar problemas de memoria y recursos
+Servicio de sincronización de audio con IA - Versión GPU optimizada
 """
 
 import os
@@ -31,7 +30,7 @@ class AudioSegment:
         return f"AudioSegment({self.start:.2f}-{self.end:.2f}: '{self.text[:50]}...')"
 
 class SyncService:
-    """Servicio optimizado de sincronización de audio con IA"""
+    """Servicio de sincronización de audio con IA optimizado para GPU"""
     
     def __init__(self):
         self.tasks = {}
@@ -44,8 +43,8 @@ class SyncService:
         self._models_loaded = False
         
         # Configuración de recursos
-        self.max_memory_usage = 0.8  # 80% de memoria máxima
-        self.chunk_size = 30  # Procesar audio en chunks de 30 segundos
+        self.max_memory_usage = 0.85  # 85% de memoria máxima
+        self.chunk_size = 60  # Procesar audio en chunks de 60 segundos para archivos grandes
     
     def set_app(self, app):
         """Establecer la instancia de la aplicación Flask"""
@@ -62,7 +61,7 @@ class SyncService:
                 return False
             return True
         except Exception:
-            return True  # Si no se puede verificar, continuar
+            return True
     
     def _cleanup_memory(self):
         """Limpiar memoria y forzar garbage collection"""
@@ -81,12 +80,20 @@ class SyncService:
             # Forzar garbage collection
             gc.collect()
             
+            # Limpiar cache de GPU si está disponible
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass
+            
             current_app.logger.info("Memory cleanup completed")
         except Exception as e:
             current_app.logger.warning(f"Error during memory cleanup: {e}")
     
     def _load_ai_models_safe(self):
-        """Cargar modelos de IA de forma segura con manejo de memoria"""
+        """Cargar modelos de IA de forma segura con soporte GPU"""
         if self._models_loaded:
             return True
         
@@ -96,13 +103,21 @@ class SyncService:
                 current_app.logger.warning("Insufficient memory for AI models, using fallback mode")
                 return False
             
-            # Cargar Whisper con modelo pequeño para reducir uso de memoria
+            # Cargar Whisper con soporte GPU
             try:
                 import whisper
-                model_name = 'tiny'  # Usar modelo más pequeño por defecto
+                import torch
+                
+                # Determinar dispositivo (GPU si está disponible)
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                current_app.logger.info(f"Using device: {device}")
+                
+                # Usar modelo base para balance entre calidad y recursos
+                model_name = current_app.config.get('WHISPER_MODEL', 'base')
                 current_app.logger.info(f"Loading Whisper model: {model_name}")
-                self.whisper_model = whisper.load_model(model_name)
-                current_app.logger.info(f"Whisper model '{model_name}' loaded successfully")
+                
+                self.whisper_model = whisper.load_model(model_name, device=device)
+                current_app.logger.info(f"Whisper model '{model_name}' loaded successfully on {device}")
             except Exception as e:
                 current_app.logger.warning(f"Failed to load Whisper: {e}")
                 return False
@@ -114,13 +129,16 @@ class SyncService:
                 self.whisper_model = None
                 return False
             
-            # Cargar Sentence Transformer solo si hay memoria suficiente
+            # Cargar Sentence Transformer
             try:
                 from sentence_transformers import SentenceTransformer
-                st_model_name = 'paraphrase-multilingual-MiniLM-L12-v2'
+                st_model_name = current_app.config.get('SENTENCE_TRANSFORMER_MODEL', 'paraphrase-multilingual-MiniLM-L12-v2')
                 current_app.logger.info(f"Loading Sentence Transformer: {st_model_name}")
-                self.sentence_transformer = SentenceTransformer(st_model_name)
-                current_app.logger.info(f"Sentence Transformer loaded successfully")
+                
+                # Configurar dispositivo para sentence transformer
+                device_st = "cuda" if torch.cuda.is_available() else "cpu"
+                self.sentence_transformer = SentenceTransformer(st_model_name, device=device_st)
+                current_app.logger.info(f"Sentence Transformer loaded successfully on {device_st}")
             except Exception as e:
                 current_app.logger.warning(f"Failed to load Sentence Transformer: {e}")
                 # Continuar sin sentence transformer
@@ -168,7 +186,7 @@ class SyncService:
             self._process_sync_task(task_id)
     
     def _process_sync_task(self, task_id: str):
-        """Procesamiento optimizado de sincronización de audio"""
+        """Procesamiento optimizado de sincronización de audio para archivos grandes"""
         try:
             current_app.logger.info(f"Starting sync task: {task_id}")
             
@@ -182,6 +200,16 @@ class SyncService:
                 raise Exception(f"Archivo original no encontrado: {original_path}")
             if not os.path.exists(dubbed_path):
                 raise Exception(f"Archivo doblado no encontrado: {dubbed_path}")
+            
+            # Verificar tamaño de archivos (máximo 20GB)
+            max_size = 20 * 1024 * 1024 * 1024  # 20GB
+            orig_size = os.path.getsize(original_path)
+            dub_size = os.path.getsize(dubbed_path)
+            
+            if orig_size > max_size or dub_size > max_size:
+                raise Exception(f"Archivo demasiado grande. Máximo permitido: 20GB")
+            
+            current_app.logger.info(f"File sizes - Original: {orig_size/(1024**3):.2f}GB, Dubbed: {dub_size/(1024**3):.2f}GB")
             
             # Verificar memoria disponible
             if not self._check_memory_usage():
@@ -240,25 +268,26 @@ class SyncService:
             self._cleanup_memory()
     
     def _extract_audio_optimized(self, video_path: str, task_id: str, prefix: str) -> str:
-        """Extraer audio de forma optimizada"""
+        """Extraer audio de forma optimizada para archivos grandes"""
         try:
             temp_dir = tempfile.gettempdir()
             audio_path = os.path.join(temp_dir, f"{prefix}_{task_id}.wav")
             
-            # Comando FFmpeg optimizado para menor uso de memoria
+            # Comando FFmpeg optimizado para archivos grandes
             cmd = [
                 'ffmpeg', '-i', video_path,
                 '-vn',  # Sin video
                 '-acodec', 'pcm_s16le',  # Codec de audio
-                '-ar', '16000',  # Sample rate reducido
+                '-ar', '16000',  # Sample rate
                 '-ac', '1',  # Mono
                 '-map_metadata', '-1',  # Sin metadatos
                 '-fflags', '+bitexact',  # Reproducible
+                '-threads', '0',  # Usar todos los cores disponibles
                 '-y',  # Sobrescribir
                 audio_path
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)  # 30 min timeout
             if result.returncode != 0:
                 raise Exception(f"Error extrayendo audio: {result.stderr}")
             
@@ -270,12 +299,12 @@ class SyncService:
             return audio_path
             
         except subprocess.TimeoutExpired:
-            raise Exception("Timeout extrayendo audio - archivo demasiado grande")
+            raise Exception("Timeout extrayendo audio - archivo demasiado grande o proceso bloqueado")
         except Exception as e:
             raise Exception(f"Error extrayendo audio: {str(e)}")
     
     def _transcribe_audio_safe(self, audio_path: str, task_id: str) -> List[AudioSegment]:
-        """Transcribir audio de forma segura con manejo de memoria"""
+        """Transcribir audio de forma segura con manejo de memoria y archivos grandes"""
         try:
             if not self.whisper_model:
                 return self._create_fallback_segments(audio_path)
@@ -285,13 +314,16 @@ class SyncService:
                 current_app.logger.warning("Insufficient memory for transcription, using fallback")
                 return self._create_fallback_segments(audio_path)
             
-            # Transcribir con configuración optimizada
+            # Transcribir con configuración optimizada para archivos grandes
             result = self.whisper_model.transcribe(
                 audio_path,
                 word_timestamps=False,  # Reducir uso de memoria
-                language=None,
-                fp16=False,  # Usar FP32 para compatibilidad
-                verbose=False
+                language=None,  # Auto-detectar idioma
+                verbose=False,
+                temperature=0.0,  # Determinístico
+                beam_size=1,  # Reducir complejidad
+                best_of=1,  # Reducir complejidad
+                patience=1.0
             )
             
             segments = []
@@ -316,15 +348,16 @@ class SyncService:
         try:
             # Obtener duración del audio
             cmd = ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', audio_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             duration = float(result.stdout.strip()) if result.returncode == 0 else 60.0
             
-            # Crear segmentos cada 10 segundos
+            # Crear segmentos cada 15 segundos para archivos grandes
             segments = []
-            for i in range(0, int(duration), 10):
+            segment_duration = 15
+            for i in range(0, int(duration), segment_duration):
                 start = i
-                end = min(i + 10, duration)
-                text = f"Segmento de audio {i//10 + 1}"
+                end = min(i + segment_duration, duration)
+                text = f"Segmento de audio {i//segment_duration + 1}"
                 segments.append(AudioSegment(start, end, text))
             
             return segments
@@ -334,7 +367,7 @@ class SyncService:
     
     def _calculate_sync_offset_safe(self, original_segments: List[AudioSegment], 
                                    dubbed_segments: List[AudioSegment]) -> float:
-        """Calcular offset de forma segura"""
+        """Calcular offset de forma segura con análisis semántico optimizado"""
         try:
             if not self.sentence_transformer or not original_segments or not dubbed_segments:
                 return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
@@ -343,29 +376,38 @@ class SyncService:
             if not self._check_memory_usage():
                 return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
             
-            # Usar solo los primeros segmentos para reducir carga
-            max_segments = 10
+            # Usar solo los primeros segmentos para reducir carga en archivos grandes
+            max_segments = min(20, len(original_segments), len(dubbed_segments))
             orig_texts = [seg.text for seg in original_segments[:max_segments] if seg.text.strip()]
             dub_texts = [seg.text for seg in dubbed_segments[:max_segments] if seg.text.strip()]
             
             if not orig_texts or not dub_texts:
                 return 0.0
             
-            # Calcular embeddings
-            orig_embeddings = self.sentence_transformer.encode(orig_texts)
-            dub_embeddings = self.sentence_transformer.encode(dub_texts)
-            
-            # Encontrar mejor correspondencia
+            # Calcular embeddings en lotes pequeños para manejar memoria
+            batch_size = 5
             best_offset = 0.0
             best_similarity = 0.0
             
-            for i, orig_emb in enumerate(orig_embeddings):
-                for j, dub_emb in enumerate(dub_embeddings):
-                    similarity = np.dot(orig_emb, dub_emb) / (np.linalg.norm(orig_emb) * np.linalg.norm(dub_emb))
+            for i in range(0, len(orig_texts), batch_size):
+                orig_batch = orig_texts[i:i+batch_size]
+                orig_embeddings = self.sentence_transformer.encode(orig_batch)
+                
+                for j in range(0, len(dub_texts), batch_size):
+                    dub_batch = dub_texts[j:j+batch_size]
+                    dub_embeddings = self.sentence_transformer.encode(dub_batch)
                     
-                    if similarity > best_similarity and similarity > 0.6:
-                        best_similarity = similarity
-                        best_offset = dubbed_segments[j].start - original_segments[i].start
+                    # Encontrar mejor correspondencia en este lote
+                    for oi, orig_emb in enumerate(orig_embeddings):
+                        for di, dub_emb in enumerate(dub_embeddings):
+                            similarity = np.dot(orig_emb, dub_emb) / (np.linalg.norm(orig_emb) * np.linalg.norm(dub_emb))
+                            
+                            if similarity > best_similarity and similarity > 0.6:
+                                best_similarity = similarity
+                                orig_idx = i + oi
+                                dub_idx = j + di
+                                if orig_idx < len(original_segments) and dub_idx < len(dubbed_segments):
+                                    best_offset = dubbed_segments[dub_idx].start - original_segments[orig_idx].start
             
             current_app.logger.info(f"Calculated offset: {best_offset:.3f}s (similarity: {best_similarity:.3f})")
             return best_offset
@@ -387,7 +429,7 @@ class SyncService:
             # Obtener duración de ambos audios
             def get_duration(audio_path):
                 cmd = ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', audio_path]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
                 return float(result.stdout.strip()) if result.returncode == 0 else 0.0
             
             orig_duration = get_duration(original_audio)
@@ -413,15 +455,17 @@ class SyncService:
                 cmd = [
                     'ffmpeg', '-i', audio_path,
                     '-af', f'adelay={int(abs(offset) * 1000)}|{int(abs(offset) * 1000)}',
+                    '-threads', '0',
                     '-y', synced_audio_path
                 ]
             else:  # Adelantar audio
                 cmd = [
                     'ffmpeg', '-ss', str(abs(offset)), '-i', audio_path,
+                    '-threads', '0',
                     '-y', synced_audio_path
                 ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             if result.returncode != 0:
                 raise Exception(f"Error aplicando sincronización: {result.stderr}")
             
@@ -453,7 +497,7 @@ class SyncService:
             
             result_path = output_dir / result_filename
             
-            # Comando FFmpeg para crear MKV con múltiples pistas de audio
+            # Comando FFmpeg optimizado para archivos grandes
             cmd = [
                 'ffmpeg',
                 '-i', original_video,    # Video original
@@ -464,14 +508,18 @@ class SyncService:
                 '-map', '2:a',           # Audio sincronizado
                 '-c:v', 'copy',          # Copiar video sin recodificar
                 '-c:a', 'aac',           # Codec de audio
-                '-b:a', '128k',          # Bitrate de audio
+                '-b:a', '192k',          # Bitrate de audio más alto para calidad
                 '-metadata:s:a:0', 'title=Original',
+                '-metadata:s:a:0', 'language=eng',
                 '-metadata:s:a:1', 'title=Doblado',
+                '-metadata:s:a:1', 'language=spa',
+                '-threads', '0',         # Usar todos los cores
+                '-movflags', '+faststart',  # Optimizar para streaming
                 '-y',                    # Sobrescribir
                 str(result_path)
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)  # 1 hora timeout
             if result.returncode != 0:
                 raise Exception(f"Error generando MKV: {result.stderr}")
             
@@ -479,7 +527,8 @@ class SyncService:
             if not result_path.exists() or result_path.stat().st_size < 1000:
                 raise Exception("El archivo MKV generado está vacío o corrupto")
             
-            current_app.logger.info(f"MKV generated successfully: {result_path} ({result_path.stat().st_size} bytes)")
+            file_size = result_path.stat().st_size
+            current_app.logger.info(f"MKV generated successfully: {result_path} ({file_size/(1024**2):.1f} MB)")
             return str(result_path)
             
         except Exception as e:
@@ -567,4 +616,7 @@ class SyncService:
                 ],
                 'total': len(self.tasks)
             }
+
+# Instancia global del servicio
+sync_service = SyncService()
 

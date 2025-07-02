@@ -1,67 +1,41 @@
 {% extends "base.html" %}
 
-{% block title %}Estado del Procesamiento - SyncDub MVP{% endblock %}
+{% block title %}Estado de Tareas - SyncDub MVP{% endblock %}
 
 {% block content %}
 <div class="row">
-    <div class="col-lg-8 mx-auto">
+    <div class="col-lg-10 mx-auto">
         <div class="card border-0 shadow">
-            <div class="card-header bg-info text-white">
+            <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
                 <h4 class="mb-0">
-                    <i class="fas fa-clock me-2"></i>
-                    Estado del Procesamiento
+                    <i class="fas fa-tasks me-2"></i>
+                    Estado de Tareas
                 </h4>
+                <button class="btn btn-light btn-sm" onclick="refreshTasks()">
+                    <i class="fas fa-sync-alt me-1"></i>
+                    Actualizar
+                </button>
             </div>
-            <div class="card-body p-4">
-                <div class="text-center mb-4">
-                    <div class="spinner-border text-primary" role="status" id="loadingSpinner">
-                        <span class="visually-hidden">Cargando...</span>
-                    </div>
-                    <h5 class="mt-3" id="statusTitle">Procesando...</h5>
-                    <p class="text-muted" id="taskId">ID de Tarea: {{ task_id }}</p>
+            <div class="card-body">
+                <!-- Loading -->
+                <div id="loadingTasks" class="text-center py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x text-muted mb-3"></i>
+                    <p class="text-muted">Cargando tareas...</p>
                 </div>
                 
-                <!-- Progress -->
-                <div class="mb-4">
-                    <div class="progress mb-2">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                             id="progressBar" role="progressbar" style="width: 0%">
-                        </div>
-                    </div>
-                    <p class="text-center mb-0" id="progressMessage">Iniciando procesamiento...</p>
+                <!-- Tasks List -->
+                <div id="tasksList" class="d-none">
+                    <!-- Tasks will be populated here -->
                 </div>
                 
-                <!-- Status Details -->
-                <div class="row g-3" id="statusDetails">
-                    <div class="col-md-6">
-                        <div class="card bg-light">
-                            <div class="card-body text-center">
-                                <i class="fas fa-upload fa-2x text-muted mb-2"></i>
-                                <h6>Archivos Subidos</h6>
-                                <span class="badge bg-success" id="uploadStatus">Completado</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card bg-light">
-                            <div class="card-body text-center">
-                                <i class="fas fa-robot fa-2x text-muted mb-2"></i>
-                                <h6>Procesamiento IA</h6>
-                                <span class="badge bg-warning" id="aiStatus">En Progreso</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Actions -->
-                <div class="text-center mt-4">
-                    <button class="btn btn-outline-primary me-2" onclick="location.reload()">
-                        <i class="fas fa-sync-alt me-2"></i>
-                        Actualizar Estado
-                    </button>
-                    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary">
-                        <i class="fas fa-home me-2"></i>
-                        Volver al Inicio
+                <!-- No Tasks -->
+                <div id="noTasks" class="text-center py-5 d-none">
+                    <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No hay tareas</h5>
+                    <p class="text-muted">Aún no se han procesado videos.</p>
+                    <a href="{{ url_for('main.upload') }}" class="btn btn-primary">
+                        <i class="fas fa-upload me-2"></i>
+                        Subir Videos
                     </a>
                 </div>
             </div>
@@ -72,49 +46,170 @@
 
 {% block scripts %}
 <script>
-    const taskId = '{{ task_id }}';
+let refreshInterval;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadTasks();
+    // Auto-refresh every 5 seconds
+    refreshInterval = setInterval(loadTasks, 5000);
+});
+
+function loadTasks() {
+    fetch('/api/tasks')
+        .then(response => response.json())
+        .then(data => {
+            displayTasks(data.tasks || []);
+        })
+        .catch(error => {
+            console.error('Error loading tasks:', error);
+            showError('Error cargando tareas');
+        });
+}
+
+function displayTasks(tasks) {
+    const loadingElement = document.getElementById('loadingTasks');
+    const tasksListElement = document.getElementById('tasksList');
+    const noTasksElement = document.getElementById('noTasks');
     
-    function updateStatus() {
-        fetch(`/api/status/${taskId}`)
-            .then(response => response.json())
-            .then(data => {
-                const progressBar = document.getElementById('progressBar');
-                const progressMessage = document.getElementById('progressMessage');
-                const statusTitle = document.getElementById('statusTitle');
-                const loadingSpinner = document.getElementById('loadingSpinner');
-                
-                progressBar.style.width = `${data.progress || 0}%`;
-                progressBar.textContent = `${data.progress || 0}%`;
-                progressMessage.textContent = data.message || 'Procesando...';
-                
-                if (data.status === 'completed') {
-                    statusTitle.textContent = '¡Completado!';
-                    loadingSpinner.classList.add('d-none');
-                    progressBar.classList.remove('progress-bar-animated', 'progress-bar-striped');
-                    progressBar.classList.add('bg-success');
-                    
-                    // Redirect to result page
-                    setTimeout(() => {
-                        window.location.href = `/result/${taskId}`;
-                    }, 2000);
-                } else if (data.status === 'error') {
-                    statusTitle.textContent = 'Error';
-                    loadingSpinner.classList.add('d-none');
-                    progressBar.classList.remove('progress-bar-animated', 'progress-bar-striped');
-                    progressBar.classList.add('bg-danger');
-                    progressMessage.textContent = data.error || 'Ha ocurrido un error';
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
+    loadingElement.classList.add('d-none');
+    
+    if (tasks.length === 0) {
+        tasksListElement.classList.add('d-none');
+        noTasksElement.classList.remove('d-none');
+        return;
     }
     
-    // Update status every 2 seconds
-    const statusInterval = setInterval(updateStatus, 2000);
+    noTasksElement.classList.add('d-none');
+    tasksListElement.classList.remove('d-none');
     
-    // Initial update
-    updateStatus();
+    // Sort tasks by creation date (newest first)
+    tasks.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    
+    tasksListElement.innerHTML = tasks.map(task => createTaskCard(task)).join('');
+}
+
+function createTaskCard(task) {
+    const statusClass = getStatusClass(task.status);
+    const statusIcon = getStatusIcon(task.status);
+    const createdAt = new Date(task.created_at).toLocaleString();
+    
+    return `
+        <div class="card mb-3 border-start border-4 ${statusClass}">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <div class="d-flex align-items-center mb-2">
+                            <i class="fas ${statusIcon} me-2"></i>
+                            <h6 class="mb-0">Tarea ${task.task_id.substring(0, 8)}</h6>
+                            <span class="badge ${getStatusBadgeClass(task.status)} ms-2">
+                                ${getStatusText(task.status)}
+                            </span>
+                        </div>
+                        <p class="text-muted mb-1">${task.message}</p>
+                        <small class="text-muted">
+                            <i class="fas fa-clock me-1"></i>
+                            ${createdAt}
+                        </small>
+                    </div>
+                    <div class="col-md-4">
+                        ${task.status === 'processing' ? createProgressBar(task.progress) : ''}
+                        ${task.status === 'completed' ? createDownloadButton(task.task_id) : ''}
+                        ${task.status === 'error' ? createErrorInfo(task.error) : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function createProgressBar(progress) {
+    return `
+        <div class="progress mb-2">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                 role="progressbar" style="width: ${progress}%">
+                ${progress}%
+            </div>
+        </div>
+    `;
+}
+
+function createDownloadButton(taskId) {
+    return `
+        <a href="/api/download/${taskId}" class="btn btn-success btn-sm">
+            <i class="fas fa-download me-1"></i>
+            Descargar
+        </a>
+    `;
+}
+
+function createErrorInfo(error) {
+    return `
+        <small class="text-danger">
+            <i class="fas fa-exclamation-triangle me-1"></i>
+            ${error}
+        </small>
+    `;
+}
+
+function getStatusClass(status) {
+    switch(status) {
+        case 'completed': return 'border-success';
+        case 'processing': return 'border-info';
+        case 'error': return 'border-danger';
+        default: return 'border-secondary';
+    }
+}
+
+function getStatusIcon(status) {
+    switch(status) {
+        case 'completed': return 'fa-check-circle text-success';
+        case 'processing': return 'fa-spinner fa-spin text-info';
+        case 'error': return 'fa-exclamation-triangle text-danger';
+        default: return 'fa-question-circle text-secondary';
+    }
+}
+
+function getStatusBadgeClass(status) {
+    switch(status) {
+        case 'completed': return 'bg-success';
+        case 'processing': return 'bg-info';
+        case 'error': return 'bg-danger';
+        default: return 'bg-secondary';
+    }
+}
+
+function getStatusText(status) {
+    switch(status) {
+        case 'completed': return 'Completado';
+        case 'processing': return 'Procesando';
+        case 'error': return 'Error';
+        default: return 'Desconocido';
+    }
+}
+
+function refreshTasks() {
+    loadTasks();
+}
+
+function showError(message) {
+    const tasksListElement = document.getElementById('tasksList');
+    tasksListElement.innerHTML = `
+        <div class="alert alert-danger">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            ${message}
+        </div>
+    `;
+    tasksListElement.classList.remove('d-none');
+    document.getElementById('loadingTasks').classList.add('d-none');
+    document.getElementById('noTasks').classList.add('d-none');
+}
+
+// Clean up interval when leaving page
+window.addEventListener('beforeunload', function() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+    }
+});
 </script>
 {% endblock %}
 

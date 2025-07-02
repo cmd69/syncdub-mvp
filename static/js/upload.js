@@ -1,26 +1,32 @@
 /**
- * SyncDub MVP - Upload functionality
+ * SyncDub MVP - Upload Page JavaScript
  */
 
-class SyncDubUploader {
+class UploadManager {
     constructor() {
         this.currentTaskId = null;
-        this.originalFile = null;
-        this.dubbedFile = null;
-        this.originalPath = '';
-        this.dubbedPath = '';
-        this.mediaAvailable = false;
+        this.progressInterval = null;
+        this.originalCurrentPath = '';
+        this.dubbedCurrentPath = '';
+        
         this.init();
     }
-
+    
     init() {
         this.setupEventListeners();
-        this.checkMediaAvailability();
-        this.updateSubmitButton();
+        this.setupFileInputs();
+        this.setupSourceToggling();
+        this.loadVolumeFiles();
     }
-
+    
     setupEventListeners() {
-        // Source selection toggles
+        // Form submission
+        const form = document.getElementById('uploadForm');
+        if (form) {
+            form.addEventListener('submit', (e) => this.handleFormSubmit(e));
+        }
+        
+        // Source radio buttons
         document.querySelectorAll('input[name="original_source"]').forEach(radio => {
             radio.addEventListener('change', () => this.toggleOriginalSource());
         });
@@ -28,421 +34,337 @@ class SyncDubUploader {
         document.querySelectorAll('input[name="dubbed_source"]').forEach(radio => {
             radio.addEventListener('change', () => this.toggleDubbedSource());
         });
-
-        // File inputs
-        const originalInput = document.getElementById('originalVideo');
-        const dubbedInput = document.getElementById('dubbedVideo');
         
+        // Custom filename validation
+        const customFilename = document.getElementById('customFilename');
+        if (customFilename) {
+            customFilename.addEventListener('input', () => this.validateCustomFilename());
+        }
+    }
+    
+    setupFileInputs() {
+        // Original video input
+        const originalInput = document.getElementById('originalVideo');
         if (originalInput) {
             originalInput.addEventListener('change', (e) => this.handleFileSelect(e, 'original'));
+            this.setupDragAndDrop(originalInput.closest('.upload-area'), originalInput);
         }
         
+        // Dubbed video input
+        const dubbedInput = document.getElementById('dubbedVideo');
         if (dubbedInput) {
             dubbedInput.addEventListener('change', (e) => this.handleFileSelect(e, 'dubbed'));
+            this.setupDragAndDrop(dubbedInput.closest('.upload-area'), dubbedInput);
         }
-
-        // Upload areas
-        this.setupDropZone('originalUploadArea', 'originalVideo');
-        this.setupDropZone('dubbedUploadArea', 'dubbedVideo');
-
-        // Form submission
-        const form = document.getElementById('uploadForm');
-        if (form) {
-            form.addEventListener('submit', (e) => this.handleSubmit(e));
-        }
-
-        // Navigation links
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('navigate-link')) {
-                e.preventDefault();
-                const path = e.target.dataset.path;
-                const type = e.target.closest('.volume-area').id.includes('original') ? 'original' : 'dubbed';
-                this.navigateToPath(path, type);
-            }
-            
-            if (e.target.classList.contains('media-item') && !e.target.classList.contains('directory')) {
-                const type = e.target.closest('.volume-area').id.includes('original') ? 'original' : 'dubbed';
-                this.selectMediaFile(e.target, type);
-            }
-            
-            if (e.target.classList.contains('directory')) {
-                const path = e.target.dataset.path;
-                const type = e.target.closest('.volume-area').id.includes('original') ? 'original' : 'dubbed';
-                this.navigateToPath(path, type);
-            }
-        });
     }
-
-    setupDropZone(areaId, inputId) {
-        const area = document.getElementById(areaId);
-        const input = document.getElementById(inputId);
+    
+    setupDragAndDrop(uploadArea, fileInput) {
+        if (!uploadArea || !fileInput) return;
         
-        if (!area || !input) return;
-
-        area.addEventListener('click', () => input.click());
-
-        area.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            area.classList.add('dragover');
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
         });
-
-        area.addEventListener('dragleave', () => {
-            area.classList.remove('dragover');
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => {
+                uploadArea.classList.add('dragover');
+            });
         });
-
-        area.addEventListener('drop', (e) => {
-            e.preventDefault();
-            area.classList.remove('dragover');
-            
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => {
+                uploadArea.classList.remove('dragover');
+            });
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
             const files = e.dataTransfer.files;
             if (files.length > 0) {
-                input.files = files;
+                fileInput.files = files;
                 const event = new Event('change', { bubbles: true });
-                input.dispatchEvent(event);
+                fileInput.dispatchEvent(event);
             }
         });
     }
-
-    async checkMediaAvailability() {
-        try {
-            const response = await fetch('/api/media/status');
-            const data = await response.json();
-            
-            this.mediaAvailable = data.accessible;
-            this.updateMediaStatus(data);
-            
-        } catch (error) {
-            console.error('Error checking media availability:', error);
-            this.mediaAvailable = false;
-            this.updateMediaStatus({
-                accessible: false,
-                message: 'Error al conectar con el servidor'
-            });
-        }
+    
+    setupSourceToggling() {
+        this.toggleOriginalSource();
+        this.toggleDubbedSource();
     }
-
-    updateMediaStatus(data) {
-        const originalStatus = document.getElementById('originalMediaStatus');
-        const dubbedStatus = document.getElementById('dubbedMediaStatus');
-        
-        const statusHtml = data.accessible 
-            ? `<i class="fas fa-check-circle text-success me-2"></i>Volumen disponible: ${data.message || 'Listo para usar'}`
-            : `<i class="fas fa-exclamation-triangle text-warning me-2"></i>No hay volumen del servidor montado`;
-        
-        if (originalStatus) originalStatus.innerHTML = statusHtml;
-        if (dubbedStatus) dubbedStatus.innerHTML = statusHtml;
-        
-        // Enable/disable volume radio buttons
-        const volumeRadios = document.querySelectorAll('input[value="volume"]');
-        volumeRadios.forEach(radio => {
-            radio.disabled = !data.accessible;
-            if (!data.accessible && radio.checked) {
-                const uploadRadio = radio.closest('.source-selection').querySelector('input[value="upload"]');
-                if (uploadRadio) uploadRadio.checked = true;
-            }
-        });
-    }
-
+    
     toggleOriginalSource() {
-        const uploadSelected = document.getElementById('originalUpload').checked;
+        const uploadSelected = document.getElementById('original_upload').checked;
         const uploadArea = document.getElementById('originalUploadArea');
         const volumeArea = document.getElementById('originalVolumeArea');
         
-        if (uploadSelected) {
-            uploadArea.classList.remove('d-none');
-            volumeArea.classList.add('d-none');
-            this.originalPath = '';
-        } else {
-            uploadArea.classList.add('d-none');
-            volumeArea.classList.remove('d-none');
-            this.originalFile = null;
-            this.loadMediaBrowser('original');
+        if (uploadArea) {
+            uploadArea.style.display = uploadSelected ? 'block' : 'none';
+        }
+        if (volumeArea) {
+            volumeArea.style.display = uploadSelected ? 'none' : 'block';
         }
         
-        this.updateFileInfo('original');
-        this.updateSubmitButton();
+        this.validateForm();
     }
-
+    
     toggleDubbedSource() {
-        const uploadSelected = document.getElementById('dubbedUpload').checked;
+        const uploadSelected = document.getElementById('dubbed_upload').checked;
         const uploadArea = document.getElementById('dubbedUploadArea');
         const volumeArea = document.getElementById('dubbedVolumeArea');
         
-        if (uploadSelected) {
-            uploadArea.classList.remove('d-none');
-            volumeArea.classList.add('d-none');
-            this.dubbedPath = '';
-        } else {
-            uploadArea.classList.add('d-none');
-            volumeArea.classList.remove('d-none');
-            this.dubbedFile = null;
-            this.loadMediaBrowser('dubbed');
+        if (uploadArea) {
+            uploadArea.style.display = uploadSelected ? 'block' : 'none';
+        }
+        if (volumeArea) {
+            volumeArea.style.display = uploadSelected ? 'none' : 'block';
         }
         
-        this.updateFileInfo('dubbed');
-        this.updateSubmitButton();
+        this.validateForm();
     }
-
-    async loadMediaBrowser(type, path = '') {
-        const browserId = `${type}MediaBrowser`;
-        const breadcrumbId = `${type}Breadcrumb`;
-        const browser = document.getElementById(browserId);
-        const breadcrumb = document.getElementById(breadcrumbId);
+    
+    handleFileSelect(event, type) {
+        const file = event.target.files[0];
+        const uploadArea = event.target.closest('.upload-area');
         
-        if (!browser) return;
-
-        try {
-            browser.innerHTML = '<div class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>';
+        if (!file || !uploadArea) return;
+        
+        // Validate file
+        const validation = SyncDub.validateFile(file);
+        if (!validation.valid) {
+            SyncDub.showToast(validation.error, 'danger');
+            event.target.value = '';
+            this.clearFileInfo(uploadArea);
+            this.validateForm();
+            return;
+        }
+        
+        // Show file info
+        this.showFileInfo(uploadArea, file);
+        this.validateForm();
+    }
+    
+    showFileInfo(uploadArea, file) {
+        const placeholder = uploadArea.querySelector('.upload-placeholder');
+        const fileInfo = uploadArea.querySelector('.file-info');
+        
+        if (placeholder) placeholder.classList.add('d-none');
+        if (fileInfo) {
+            fileInfo.classList.remove('d-none');
+            const filename = fileInfo.querySelector('.filename');
+            const filesize = fileInfo.querySelector('.filesize');
             
-            const response = await fetch(`/api/media/list?path=${encodeURIComponent(path)}`);
-            const data = await response.json();
-            
-            if (response.ok) {
-                this.renderMediaBrowser(data, type);
-                this.updateBreadcrumb(data.current_path, type);
-                browser.classList.remove('d-none');
-                if (breadcrumb) breadcrumb.classList.remove('d-none');
-            } else {
-                browser.innerHTML = `<div class="alert alert-warning">Error: ${data.error || 'No se pudo cargar el contenido'}</div>`;
-            }
-            
-        } catch (error) {
-            console.error('Error loading media browser:', error);
-            browser.innerHTML = '<div class="alert alert-danger">Error al conectar con el servidor</div>';
+            if (filename) filename.textContent = file.name;
+            if (filesize) filesize.textContent = `(${SyncDub.formatFileSize(file.size)})`;
         }
     }
-
-    renderMediaBrowser(data, type) {
-        const browserId = `${type}MediaBrowser`;
-        const browser = document.getElementById(browserId);
+    
+    clearFileInfo(uploadArea) {
+        const placeholder = uploadArea.querySelector('.upload-placeholder');
+        const fileInfo = uploadArea.querySelector('.file-info');
         
-        if (!browser) return;
-
-        let html = '';
-        
-        // Parent directory link
-        if (data.parent_path !== null) {
-            html += `
-                <div class="media-item directory" data-path="${data.parent_path}">
-                    <i class="fas fa-level-up-alt me-2"></i>
-                    <strong>.. (Directorio padre)</strong>
-                </div>
-            `;
-        }
-        
-        // Directories
-        data.directories.forEach(dir => {
-            html += `
-                <div class="media-item directory" data-path="${dir.path}">
-                    <i class="fas fa-folder me-2 text-warning"></i>
-                    <strong>${dir.name}</strong>
-                </div>
-            `;
-        });
-        
-        // Videos
-        data.videos.forEach(video => {
-            html += `
-                <div class="media-item" data-path="${video.path}" data-name="${video.name}" data-size="${video.size}">
-                    <i class="fas fa-file-video me-2 text-primary"></i>
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <div class="fw-medium">${video.name}</div>
-                            <small class="text-muted">${video.size_formatted}</small>
-                        </div>
-                        <i class="fas fa-chevron-right text-muted"></i>
-                    </div>
-                </div>
-            `;
-        });
-        
-        if (html === '') {
-            html = '<div class="text-center text-muted p-3">No hay archivos de video en este directorio</div>';
-        }
-        
-        browser.innerHTML = html;
+        if (placeholder) placeholder.classList.remove('d-none');
+        if (fileInfo) fileInfo.classList.add('d-none');
     }
-
-    updateBreadcrumb(currentPath, type) {
-        const breadcrumbId = `${type}Breadcrumb`;
-        const breadcrumb = document.getElementById(breadcrumbId);
+    
+    loadVolumeFiles() {
+        this.loadVolumeFilesForType('original');
+        this.loadVolumeFilesForType('dubbed');
+    }
+    
+    loadVolumeFilesForType(type) {
+        const fileList = document.getElementById(`${type}FileList`);
+        if (!fileList) return;
         
-        if (!breadcrumb) return;
-
-        const ol = breadcrumb.querySelector('.breadcrumb');
-        if (!ol) return;
-
-        let html = `
-            <li class="breadcrumb-item">
-                <a href="#" data-path="" class="navigate-link">
-                    <i class="fas fa-home"></i> Inicio
-                </a>
-            </li>
-        `;
+        const currentPath = type === 'original' ? this.originalCurrentPath : this.dubbedCurrentPath;
         
-        if (currentPath) {
-            const parts = currentPath.split('/').filter(part => part);
-            let buildPath = '';
-            
-            parts.forEach((part, index) => {
-                buildPath += (buildPath ? '/' : '') + part;
-                const isLast = index === parts.length - 1;
-                
-                if (isLast) {
-                    html += `<li class="breadcrumb-item active">${part}</li>`;
+        fetch(`/api/media/list?path=${encodeURIComponent(currentPath)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    this.showVolumeError(fileList, data.error);
                 } else {
-                    html += `
-                        <li class="breadcrumb-item">
-                            <a href="#" data-path="${buildPath}" class="navigate-link">${part}</a>
-                        </li>
-                    `;
+                    this.displayVolumeFiles(type, data.items, data.breadcrumbs);
                 }
+            })
+            .catch(error => {
+                console.error('Error loading volume files:', error);
+                this.showVolumeError(fileList, 'Error cargando archivos del servidor');
+            });
+    }
+    
+    displayVolumeFiles(type, items, breadcrumbs) {
+        const fileList = document.getElementById(`${type}FileList`);
+        const breadcrumb = document.getElementById(`${type}Breadcrumb`);
+        
+        if (!fileList) return;
+        
+        // Update breadcrumb
+        if (breadcrumb && breadcrumbs) {
+            breadcrumb.innerHTML = breadcrumbs.map(crumb => `
+                <li class="breadcrumb-item ${crumb.path === (type === 'original' ? this.originalCurrentPath : this.dubbedCurrentPath) ? 'active' : ''}">
+                    ${crumb.path === (type === 'original' ? this.originalCurrentPath : this.dubbedCurrentPath) ? 
+                        crumb.name : 
+                        `<a href="#" data-path="${crumb.path}">${crumb.name}</a>`
+                    }
+                </li>
+            `).join('');
+            
+            // Add breadcrumb click handlers
+            breadcrumb.querySelectorAll('a').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.navigateToPath(type, link.dataset.path);
+                });
             });
         }
         
-        ol.innerHTML = html;
-    }
-
-    navigateToPath(path, type) {
-        this.loadMediaBrowser(type, path);
-    }
-
-    selectMediaFile(element, type) {
-        // Remove previous selection
-        const browser = element.closest('.media-browser');
-        browser.querySelectorAll('.media-item').forEach(item => {
-            item.classList.remove('selected');
-        });
-        
-        // Add selection to clicked item
-        element.classList.add('selected');
-        
-        // Store the path
-        const path = element.dataset.path;
-        const name = element.dataset.name;
-        const size = parseInt(element.dataset.size);
-        
-        if (type === 'original') {
-            this.originalPath = path;
-            this.originalFile = { name, size };
+        // Display files
+        if (items.length === 0) {
+            fileList.innerHTML = `
+                <div class="text-center text-muted py-3">
+                    <i class="fas fa-folder-open me-2"></i>
+                    No hay archivos en este directorio
+                </div>
+            `;
         } else {
-            this.dubbedPath = path;
-            this.dubbedFile = { name, size };
-        }
-        
-        this.updateFileInfo(type);
-        this.updateSubmitButton();
-        
-        SyncDub.showToast(`Archivo seleccionado: ${name}`, 'success');
-    }
-
-    handleFileSelect(event, type) {
-        const file = event.target.files[0];
-        
-        if (!file) {
-            if (type === 'original') {
-                this.originalFile = null;
-            } else {
-                this.dubbedFile = null;
-            }
-            this.updateFileInfo(type);
-            this.updateSubmitButton();
-            return;
-        }
-        
-        // Validate file type
-        if (!SyncDub.isValidVideoFile(file.name)) {
-            SyncDub.showToast('Por favor selecciona un archivo de video válido', 'error');
-            event.target.value = '';
-            return;
-        }
-
-        // Validate file size (8GB limit)
-        if (file.size > 8 * 1024 * 1024 * 1024) {
-            SyncDub.showToast('El archivo es demasiado grande. Máximo 8GB permitido', 'error');
-            event.target.value = '';
-            return;
-        }
-        
-        if (type === 'original') {
-            this.originalFile = file;
-            this.originalPath = '';
-        } else {
-            this.dubbedFile = file;
-            this.dubbedPath = '';
-        }
-        
-        this.updateFileInfo(type);
-        this.updateSubmitButton();
-        
-        SyncDub.showToast(`Archivo cargado: ${file.name}`, 'success');
-    }
-
-    updateFileInfo(type) {
-        const infoId = `${type}FileInfo`;
-        const areaId = `${type}UploadArea`;
-        const info = document.getElementById(infoId);
-        const area = document.getElementById(areaId);
-        
-        if (!info || !area) return;
-
-        const file = type === 'original' ? this.originalFile : this.dubbedFile;
-        const path = type === 'original' ? this.originalPath : this.dubbedPath;
-        
-        if (file || path) {
-            const name = file ? file.name : path.split('/').pop();
-            const size = file ? file.size : 0;
+            fileList.innerHTML = items.map(item => this.createFileItem(type, item)).join('');
             
-            info.querySelector('.file-name').textContent = name;
-            info.querySelector('.file-size').textContent = file ? SyncDub.formatFileSize(size) : 'Archivo del servidor';
-            info.classList.remove('d-none');
-            area.classList.add('has-file');
-        } else {
-            info.classList.add('d-none');
-            area.classList.remove('has-file');
+            // Add click handlers
+            fileList.querySelectorAll('.file-item').forEach(item => {
+                item.addEventListener('click', () => this.handleVolumeItemClick(type, item));
+            });
         }
     }
-
-    updateSubmitButton() {
+    
+    createFileItem(type, item) {
+        const icon = item.type === 'directory' ? 
+            (item.is_parent ? 'fa-level-up-alt' : 'fa-folder') : 
+            'fa-file-video';
+        const iconColor = item.type === 'directory' ? 'text-warning' : 'text-info';
+        
+        return `
+            <div class="file-item ${item.type}" data-path="${item.path}" data-type="${item.type}" data-name="${item.name}">
+                <div class="d-flex align-items-center">
+                    <i class="fas ${icon} ${iconColor} me-2"></i>
+                    <div class="flex-grow-1">
+                        <div class="fw-medium">${item.name}</div>
+                        ${item.type === 'file' ? `<small class="text-muted">${item.size_formatted}</small>` : ''}
+                    </div>
+                    ${item.type === 'directory' ? '<i class="fas fa-chevron-right text-muted"></i>' : ''}
+                </div>
+            </div>
+        `;
+    }
+    
+    handleVolumeItemClick(type, itemElement) {
+        const itemType = itemElement.dataset.type;
+        const itemPath = itemElement.dataset.path;
+        const itemName = itemElement.dataset.name;
+        
+        if (itemType === 'directory') {
+            this.navigateToPath(type, itemPath);
+        } else {
+            this.selectVolumeFile(type, itemPath, itemName);
+        }
+    }
+    
+    navigateToPath(type, path) {
+        if (type === 'original') {
+            this.originalCurrentPath = path;
+        } else {
+            this.dubbedCurrentPath = path;
+        }
+        
+        this.loadVolumeFilesForType(type);
+    }
+    
+    selectVolumeFile(type, path, name) {
+        // Clear previous selections
+        const fileList = document.getElementById(`${type}FileList`);
+        if (fileList) {
+            fileList.querySelectorAll('.file-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+        }
+        
+        // Select current item
+        const selectedItem = fileList.querySelector(`[data-path="${path}"]`);
+        if (selectedItem) {
+            selectedItem.classList.add('selected');
+        }
+        
+        // Update hidden input and info
+        const hiddenInput = document.getElementById(`${type}VolumeFile`);
+        const volumeInfo = document.getElementById(`${type}VolumeInfo`);
+        const selectedFileSpan = document.getElementById(`${type}SelectedFile`);
+        
+        if (hiddenInput) hiddenInput.value = path;
+        if (volumeInfo) volumeInfo.classList.remove('d-none');
+        if (selectedFileSpan) selectedFileSpan.textContent = `Seleccionado: ${name}`;
+        
+        this.validateForm();
+    }
+    
+    showVolumeError(fileList, error) {
+        fileList.innerHTML = `
+            <div class="text-center text-danger py-3">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                ${error}
+            </div>
+        `;
+    }
+    
+    validateCustomFilename() {
+        const input = document.getElementById('customFilename');
+        if (!input) return;
+        
+        const value = input.value.trim();
+        if (value) {
+            // Remove invalid characters
+            const cleaned = value.replace(/[^a-zA-Z0-9\-_\s]/g, '');
+            if (cleaned !== value) {
+                input.value = cleaned;
+                SyncDub.showToast('Se han removido caracteres no válidos del nombre', 'warning');
+            }
+        }
+    }
+    
+    validateForm() {
         const submitBtn = document.getElementById('submitBtn');
         if (!submitBtn) return;
-
-        const hasOriginal = this.originalFile || this.originalPath;
-        const hasDubbed = this.dubbedFile || this.dubbedPath;
         
-        submitBtn.disabled = !(hasOriginal && hasDubbed);
+        let isValid = true;
+        
+        // Check original source
+        const originalUpload = document.getElementById('original_upload').checked;
+        if (originalUpload) {
+            const originalFile = document.getElementById('originalVideo').files[0];
+            if (!originalFile) isValid = false;
+        } else {
+            const originalVolumeFile = document.getElementById('originalVolumeFile').value;
+            if (!originalVolumeFile) isValid = false;
+        }
+        
+        // Check dubbed source
+        const dubbedUpload = document.getElementById('dubbed_upload').checked;
+        if (dubbedUpload) {
+            const dubbedFile = document.getElementById('dubbedVideo').files[0];
+            if (!dubbedFile) isValid = false;
+        } else {
+            const dubbedVolumeFile = document.getElementById('dubbedVolumeFile').value;
+            if (!dubbedVolumeFile) isValid = false;
+        }
+        
+        submitBtn.disabled = !isValid;
     }
-
-    async handleSubmit(event) {
+    
+    async handleFormSubmit(event) {
         event.preventDefault();
         
-        const formData = new FormData();
-        
-        // Add custom filename
-        const customFilename = document.getElementById('customFilename').value.trim();
-        if (customFilename) {
-            formData.append('custom_filename', customFilename);
-        }
-        
-        // Add original source
-        const originalSource = document.querySelector('input[name="original_source"]:checked').value;
-        formData.append('original_source', originalSource);
-        
-        if (originalSource === 'upload' && this.originalFile) {
-            formData.append('original_video', this.originalFile);
-        } else if (originalSource === 'volume' && this.originalPath) {
-            formData.append('original_path', this.originalPath);
-        }
-        
-        // Add dubbed source
-        const dubbedSource = document.querySelector('input[name="dubbed_source"]:checked').value;
-        formData.append('dubbed_source', dubbedSource);
-        
-        if (dubbedSource === 'upload' && this.dubbedFile) {
-            formData.append('dubbed_video', this.dubbedFile);
-        } else if (dubbedSource === 'volume' && this.dubbedPath) {
-            formData.append('dubbed_path', this.dubbedPath);
-        }
+        const formData = new FormData(event.target);
         
         try {
             this.showProgress();
@@ -452,117 +374,126 @@ class SyncDubUploader {
                 body: formData
             });
             
-            const data = await response.json();
+            const result = await response.json();
             
             if (response.ok) {
-                this.currentTaskId = data.task_id;
-                this.monitorProgress();
+                this.currentTaskId = result.task_id;
+                this.startProgressMonitoring();
+                SyncDub.showToast('Procesamiento iniciado correctamente', 'success');
             } else {
-                throw new Error(data.error || 'Error en la subida');
+                throw new Error(result.error || 'Error en el servidor');
             }
             
         } catch (error) {
             console.error('Upload error:', error);
             this.showError(error.message);
+            SyncDub.showToast(error.message, 'danger');
         }
     }
-
+    
     showProgress() {
-        document.getElementById('uploadForm').classList.add('d-none');
         document.getElementById('progressSection').classList.remove('d-none');
         document.getElementById('resultSection').classList.add('d-none');
         document.getElementById('errorSection').classList.add('d-none');
     }
-
-    async monitorProgress() {
+    
+    startProgressMonitoring() {
+        if (this.progressInterval) {
+            clearInterval(this.progressInterval);
+        }
+        
+        this.progressInterval = setInterval(() => {
+            this.checkProgress();
+        }, 2000);
+        
+        // Initial check
+        this.checkProgress();
+    }
+    
+    async checkProgress() {
         if (!this.currentTaskId) return;
         
         try {
             const response = await fetch(`/api/status/${this.currentTaskId}`);
-            const data = await response.json();
+            const status = await response.json();
             
-            if (response.ok) {
-                this.updateProgress(data.progress, data.message);
-                
-                if (data.status === 'completed') {
-                    this.showResult();
-                } else if (data.status === 'error') {
-                    this.showError(data.message);
-                } else {
-                    // Continue monitoring
-                    setTimeout(() => this.monitorProgress(), 2000);
-                }
-            } else {
-                throw new Error(data.error || 'Error al obtener estado');
+            this.updateProgressDisplay(status);
+            
+            if (status.status === 'completed') {
+                this.showResult();
+                this.stopProgressMonitoring();
+            } else if (status.status === 'error') {
+                this.showError(status.error || 'Error desconocido');
+                this.stopProgressMonitoring();
             }
             
         } catch (error) {
-            console.error('Progress monitoring error:', error);
-            this.showError('Error al monitorear el progreso');
+            console.error('Progress check error:', error);
         }
     }
-
-    updateProgress(progress, message) {
+    
+    updateProgressDisplay(status) {
         const progressBar = document.getElementById('progressBar');
         const progressMessage = document.getElementById('progressMessage');
         
         if (progressBar) {
-            progressBar.style.width = `${progress}%`;
-            progressBar.setAttribute('aria-valuenow', progress);
+            SyncDub.updateProgress(progressBar, status.progress || 0);
         }
         
         if (progressMessage) {
-            progressMessage.textContent = message;
+            progressMessage.textContent = status.message || 'Procesando...';
         }
     }
-
+    
     showResult() {
         document.getElementById('progressSection').classList.add('d-none');
         document.getElementById('resultSection').classList.remove('d-none');
         
         const downloadBtn = document.getElementById('downloadBtn');
+        const customNameBadge = document.getElementById('customNameBadge');
+        const customFilename = document.getElementById('customFilename').value.trim();
+        
         if (downloadBtn) {
-            downloadBtn.onclick = () => this.downloadResult();
+            downloadBtn.href = `/api/download/${this.currentTaskId}`;
         }
+        
+        if (customNameBadge && customFilename) {
+            customNameBadge.textContent = `Archivo: ${customFilename}.mkv`;
+            customNameBadge.style.display = 'inline';
+        } else if (customNameBadge) {
+            customNameBadge.style.display = 'none';
+        }
+        
+        SyncDub.showToast('¡Sincronización completada exitosamente!', 'success');
     }
-
-    showError(message) {
+    
+    showError(error) {
         document.getElementById('progressSection').classList.add('d-none');
         document.getElementById('errorSection').classList.remove('d-none');
-        document.getElementById('errorMessage').textContent = message;
-    }
-
-    async downloadResult() {
-        if (!this.currentTaskId) return;
         
-        try {
-            const response = await fetch(`/api/download/${this.currentTaskId}`);
-            
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `synced_${this.currentTaskId}.mkv`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                
-                SyncDub.showToast('Descarga iniciada', 'success');
-            } else {
-                throw new Error('Error al descargar el archivo');
-            }
-            
-        } catch (error) {
-            console.error('Download error:', error);
-            SyncDub.showToast('Error al descargar el archivo', 'error');
+        const errorMessage = document.getElementById('errorMessage');
+        if (errorMessage) {
+            errorMessage.textContent = error;
+        }
+    }
+    
+    stopProgressMonitoring() {
+        if (this.progressInterval) {
+            clearInterval(this.progressInterval);
+            this.progressInterval = null;
         }
     }
 }
 
-// Initialize uploader when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    new SyncDubUploader();
+// Initialize upload manager when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    new UploadManager();
+});
+
+// Clean up on page unload
+window.addEventListener('beforeunload', function() {
+    if (window.uploadManager && window.uploadManager.progressInterval) {
+        clearInterval(window.uploadManager.progressInterval);
+    }
 });
 
