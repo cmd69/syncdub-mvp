@@ -573,7 +573,7 @@ class SyncService:
         except Exception as e:
             current_app.logger.warning(f"Error during cleanup: {e}")
     
-    def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    def get_task_status(self, task_id: str):
         """Obtener estado de una tarea"""
         with self._lock:
             task = self.tasks.get(task_id)
@@ -600,7 +600,7 @@ class SyncService:
                 return result_path, custom_name
             return None, None
     
-    def list_all_tasks(self) -> Dict[str, Any]:
+    def list_all_tasks(self):
         """Listar todas las tareas"""
         with self._lock:
             return {
