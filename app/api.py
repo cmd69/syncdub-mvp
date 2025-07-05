@@ -16,6 +16,14 @@ bp = Blueprint('api', __name__)
 # Instancia del servicio de sincronización
 sync_service = SyncService()
 
+@bp.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'message': 'SyncDub MVP API is running'
+    })
+
 @bp.route('/upload', methods=['POST'])
 def upload_files():
     """Endpoint para subir archivos de video"""
