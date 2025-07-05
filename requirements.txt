@@ -1,33 +1,62 @@
-# Web Framework
+# Requirements para SyncDub MVP con soporte GPU
+# Versiones específicas para estabilidad y rendimiento
+
+# Framework web
 Flask==2.3.3
 Werkzeug==2.3.7
+Jinja2==3.1.2
+MarkupSafe==2.1.3
 
-# Audio/Video Processing
-ffmpeg-python==0.2.0
-pydub==0.25.1
-moviepy==1.0.3
+# CORS para frontend-backend
+Flask-CORS==4.0.0
 
-# AI/ML Libraries
-openai-whisper==20231117
-sentence-transformers==2.2.2
-torch==2.1.0
-torchaudio==2.1.0
-transformers==4.35.0
-
-# Scientific Computing
-numpy==1.24.3
-scipy==1.11.4
-scikit-learn==1.3.2
-
-# Utilities
-python-dotenv==1.0.0
-tqdm==4.66.1
-requests==2.31.0
-
-# File handling
+# Procesamiento de archivos
+Pillow==10.0.1
 python-magic==0.4.27
 
-# Progress tracking
-celery==5.3.4
-redis==5.0.1
+# IA y Machine Learning con soporte GPU
+openai-whisper==20231117
+sentence-transformers==2.2.2
 
+# PyTorch con soporte GPU (CUDA 12.1 for CUDA 12.6 compatibility)
+torch==2.2.0+cu121
+torchaudio==2.2.0+cu121
+torchvision==0.17.0+cu121
+
+# Dependencias de ML
+numpy==1.24.4
+scipy==1.10.1
+scikit-learn==1.3.2
+transformers==4.35.2
+tokenizers==0.15.0
+huggingface-hub==0.19.4
+
+# Procesamiento de audio/video
+librosa==0.10.1
+soundfile==0.12.1
+
+# Utilidades del sistema
+psutil==5.9.6
+requests==2.31.0
+urllib3==2.0.7
+
+# Manejo de fechas y tiempo
+python-dateutil==2.8.2
+
+# Logging y debugging
+colorama==0.4.6
+
+# Seguridad
+cryptography==41.0.7
+
+# Optimización de memoria
+memory-profiler==0.61.0
+pympler==0.9
+
+# Utilidades adicionales
+tqdm==4.66.1
+click==8.1.7
+packaging==23.2
+
+# Dependencias adicionales para GPU
+nvidia-ml-py3==7.352.0

@@ -1,6 +1,6 @@
-# 🎬 SyncDub MVP
+# 🎬 SyncDub MVP - Versión GPU Optimizada
 
-**Sincronizador de pistas de audio para versiones dobladas de películas**
+**Sincronización inteligente de audio entre versiones originales y dobladas usando IA**
 
 SyncDub MVP es una aplicación web que utiliza inteligencia artificial local para sincronizar automáticamente las pistas de audio entre versiones originales y dobladas de películas. La aplicación procesa ambos videos, transcribe los audios, empareja las frases por significado semántico y genera un archivo MKV final con ambas pistas de audio sincronizadas.
 
@@ -8,264 +8,347 @@ SyncDub MVP es una aplicación web que utiliza inteligencia artificial local par
 
 ![Procesamiento Videos](docs/captura1.png)
 
-## ✨ Características Principales
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://docker.com)
+[![GPU](https://img.shields.io/badge/GPU-CUDA%20Accelerated-green?logo=nvidia)](https://nvidia.com)
+[![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://python.org)
+[![Flask](https://img.shields.io/badge/Flask-2.3-red?logo=flask)](https://flask.palletsprojects.com)
 
-- **🤖 IA Local**: Procesamiento completamente local usando Whisper y sentence-transformers
-- **🌍 Multilingüe**: Soporte para múltiples idiomas con emparejamiento semántico inteligente
-- **🎥 Formatos Múltiples**: Acepta MP4, AVI, MKV, MOV, WMV, FLV, WebM
-- **📦 Containerizado**: Fácil despliegue con Docker
-- **🔄 Procesamiento Asíncrono**: Interfaz web con indicadores de progreso en tiempo real
-- **💾 Sin APIs Externas**: Todo el procesamiento se realiza localmente
+## 🚀 Características Principales
 
-## 🚀 Inicio Rápido
+- **🧠 IA Avanzada**: Whisper + Sentence Transformers para análisis semántico preciso
+- **🎮 Aceleración GPU**: Soporte completo para CUDA y procesamiento acelerado
+- **📁 Doble Fuente**: Subida local o selección desde volumen NFS montado
+- **📦 Archivos Grandes**: Soporte para archivos de hasta 20GB
+- **🔧 Configuración Flexible**: Variables de entorno para todos los parámetros
+- **📊 Monitoreo Completo**: Endpoints de salud y información del sistema
+- **🐳 Docker Optimizado**: Contenedores con límites de recursos y healthcheck
 
-### Prerrequisitos
+## 📋 Requisitos del Sistema
 
-- Docker y Docker Compose instalados
-- Al menos 4GB de RAM disponible
-- Espacio en disco suficiente para los videos y modelos de IA
+### Mínimos
+- **OS**: Ubuntu 20.04+ / CentOS 8+ / Debian 11+
+- **RAM**: 4GB disponible
+- **Disco**: 10GB libres
+- **Docker**: 20.10+
+- **Docker Compose**: 2.0+
 
-### Instalación
+### Recomendados
+- **RAM**: 8GB+ disponible
+- **GPU**: NVIDIA con 4GB+ VRAM
+- **Disco**: 50GB+ libres (para archivos grandes)
+- **CPU**: 4+ cores
 
-1. **Clonar o descargar el proyecto**
-   ```bash
-   # Si tienes git instalado
-   git clone <repository-url>
-   cd syncdub-mvp
-   
-   # O simplemente descomprime el archivo ZIP
-   ```
+### Para GPU (Opcional pero Recomendado)
+- **Drivers NVIDIA**: 470+
+- **CUDA**: 11.8+
+- **nvidia-container-toolkit**: Instalado
 
-2. **Ejecutar la aplicación**
-   ```bash
-   # Método 1: Usar el script de inicio (recomendado)
-   ./start.sh
-   
-   # Método 2: Usar Docker Compose directamente
-   docker-compose up --build -d
-   ```
+## 🛠️ Instalación Rápida
 
-3. **Acceder a la aplicación**
-   - Abrir navegador en: http://localhost:5000
-   - La primera ejecución puede tardar más tiempo debido a la descarga de modelos de IA
+### 1. Clonar/Descargar Proyecto
+```bash
+# Si tienes el zip
+unzip syncdub-mvp-complete.zip
+cd syncdub-mvp-complete
 
-## 📖 Cómo Usar
-
-### Paso 1: Subir Videos
-1. Ve a la página "Subir Videos"
-2. Selecciona el video original (versión en idioma original)
-3. Selecciona el video doblado (versión doblada)
-4. Haz clic en "Iniciar Sincronización"
-
-### Paso 2: Monitorear Progreso
-- La aplicación mostrará el progreso en tiempo real
-- El procesamiento incluye:
-  - Extracción de audio
-  - Transcripción con Whisper
-  - Emparejamiento semántico
-  - Aplicación de sincronización
-
-### Paso 3: Descargar Resultado
-- Una vez completado, descarga el archivo MKV resultante
-- El archivo incluye el video original con ambas pistas de audio sincronizadas
-
-## 🏗️ Arquitectura del Sistema
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Frontend      │    │   Backend       │    │   Procesamiento │
-│   (HTML/CSS/JS) │◄──►│   (Flask)       │◄──►│   (IA Local)    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │
-                                ▼
-                       ┌─────────────────┐
-                       │   Almacenamiento│
-                       │   (Volúmenes)   │
-                       └─────────────────┘
+# O si tienes git
+git clone <repository-url>
+cd syncdub-mvp
 ```
 
-### Componentes Principales
+### 2. Configurar Variables de Entorno
+```bash
+# Copiar archivo de ejemplo
+cp .env.example .env
 
-- **Frontend**: Interfaz web responsiva con Bootstrap
-- **Backend**: API REST con Flask
-- **Procesamiento IA**: Whisper + Sentence Transformers
-- **Procesamiento Audio**: FFmpeg + PyDub
-- **Containerización**: Docker + Docker Compose
+# Editar configuración según tu entorno
+nano .env
+```
 
-## 🔧 Configuración Avanzada
+### 3. Iniciar Aplicación
+```bash
+# Ejecutar script de inicio
+./start.sh
+```
 
-### Variables de Entorno
+¡Eso es todo! La aplicación estará disponible en `http://localhost:5000`
+
+## ⚙️ Configuración Detallada
+
+### Variables de Entorno Principales
 
 ```bash
-# En docker-compose.yml o archivo .env
+# === CONFIGURACIÓN BÁSICA ===
 FLASK_ENV=production
-SECRET_KEY=tu-clave-secreta
-WHISPER_MODEL=base  # tiny, base, small, medium, large
-SIMILARITY_THRESHOLD=0.7
-MAX_TIME_DRIFT=10.0
+SECRET_KEY=tu-clave-secreta-unica
+APP_PORT=5000
+
+# === DIRECTORIOS ===
+UPLOADS_DIR=./uploads
+OUTPUT_DIR=./output
+MODELS_DIR=./models
+
+# === VOLUMEN NFS ===
+MEDIA_SOURCE_ENABLED=true
+MEDIA_SOURCE_PATH=/mnt/nfs/videos
+
+# === RECURSOS GPU ===
+MAX_MEMORY=8G
+MAX_CPUS=4.0
+NVIDIA_VISIBLE_DEVICES=all
+
+# === MODELOS IA ===
+WHISPER_MODEL=base
+SENTENCE_TRANSFORMER_MODEL=paraphrase-multilingual-MiniLM-L12-v2
+
+# === ARCHIVOS ===
+MAX_CONTENT_LENGTH=21474836480  # 20GB
+ALLOWED_EXTENSIONS=mp4,avi,mkv,mov,wmv,flv,webm
 ```
 
-### Modelos de IA Disponibles
+### Configuración por Escenario
 
-**Whisper Models:**
-- `tiny`: Más rápido, menos preciso (~39 MB)
-- `base`: Balance entre velocidad y precisión (~74 MB) - **Por defecto**
-- `small`: Mejor precisión (~244 MB)
-- `medium`: Alta precisión (~769 MB)
-- `large`: Máxima precisión (~1550 MB)
-
-### Personalización de Umbrales
-
-```python
-# En config.py
-SIMILARITY_THRESHOLD = 0.7  # Umbral para considerar frases similares (0.0-1.0)
-MAX_TIME_DRIFT = 10.0      # Máximo desfase permitido en segundos
-```
-
-## 🛠️ Comandos Útiles
-
+#### 🖥️ Servidor Potente con GPU y NFS
 ```bash
-# Ver logs de la aplicación
-docker logs syncdub-mvp
+MEDIA_SOURCE_ENABLED=true
+MEDIA_SOURCE_PATH=/mnt/nfs/videos
+MAX_MEMORY=16G
+MAX_CPUS=8.0
+WHISPER_MODEL=large
+NVIDIA_VISIBLE_DEVICES=all
+```
 
-# Detener la aplicación
-docker-compose down
+#### 💻 Servidor GPU Limitado
+```bash
+MEDIA_SOURCE_ENABLED=false
+MAX_MEMORY=8G
+MAX_CPUS=4.0
+WHISPER_MODEL=base
+NVIDIA_VISIBLE_DEVICES=0
+```
 
-# Reiniciar la aplicación
-docker-compose restart
+#### 🧪 Desarrollo Local
+```bash
+FLASK_ENV=development
+MEDIA_SOURCE_ENABLED=false
+LOG_LEVEL=DEBUG
+WHISPER_MODEL=tiny
+MAX_MEMORY=4G
+```
 
-# Reconstruir la imagen
-docker-compose build --no-cache
+## 🎯 Uso de la Aplicación
 
-# Ver contenedores en ejecución
-docker ps
+### 1. Acceso Web
+Navega a `http://localhost:5000` en tu navegador
 
-# Ver nombre, estado y puertos de contenedores
-docker ps --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+### 2. Subir Videos
+- **Opción A**: Subir archivos desde tu equipo (máx. 20GB)
+- **Opción B**: Seleccionar desde volumen NFS montado
 
-# Limpiar archivos temporales
-docker-compose down -v
+### 3. Configurar Procesamiento
+- Selecciona video original y doblado
+- Opcionalmente, especifica nombre personalizado
+- Inicia sincronización
+
+### 4. Monitorear Progreso
+- Ve el progreso en tiempo real
+- Descarga el archivo MKV resultante
+
+### 5. Gestionar Tareas
+- Revisa el estado de todas las tareas
+- Descarga archivos completados
+
+## 🔧 Comandos Útiles
+
+### Docker Compose
+```bash
+# Ver logs en tiempo real
+docker compose logs -f
+
+# Reiniciar servicios
+docker compose restart
+
+# Detener aplicación
+docker compose down
+
+# Reconstruir imagen
+docker compose build --no-cache
+```
+
+### Monitoreo
+```bash
+# Estado del sistema
+curl http://localhost:5000/api/health
+
+# Información detallada
+curl http://localhost:5000/api/system-info
+
+# Estado GPU dentro del contenedor
+docker exec syncdub-mvp nvidia-smi
+
+# Uso de recursos
+docker stats syncdub-mvp
+```
+
+### Debugging
+```bash
+# Acceder al contenedor
+docker exec -it syncdub-mvp bash
+
+# Ver logs específicos
+docker compose logs syncdub-app
+
+# Verificar volúmenes
+docker volume ls | grep syncdub
+```
+
+## 📊 API Endpoints
+
+### Salud y Sistema
+- `GET /api/health` - Estado del servicio
+- `GET /api/system-info` - Información del sistema
+
+### Medios
+- `GET /api/media/status` - Estado del volumen NFS
+- `GET /api/media/list?path=<path>` - Listar archivos
+
+### Procesamiento
+- `POST /api/upload` - Subir y procesar videos
+- `GET /api/status/<task_id>` - Estado de tarea
+- `GET /api/download/<task_id>` - Descargar resultado
+- `GET /api/tasks` - Listar todas las tareas
+
+## 🐛 Solución de Problemas
+
+### Problema: Puerto Ocupado
+```bash
+# Verificar qué usa el puerto
+lsof -i :5000
+
+# Cambiar puerto en .env
+echo "APP_PORT=5001" >> .env
+```
+
+### Problema: Sin Acceso GPU
+```bash
+# Verificar drivers NVIDIA
+nvidia-smi
+
+# Instalar nvidia-container-toolkit
+curl -s -L https://nvidia.github.io/nvidia-container-runtime/gpgkey | sudo apt-key add -
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/nvidia-container-runtime/$distribution/nvidia-container-runtime.list | sudo tee /etc/apt/sources.list.d/nvidia-container-runtime.list
+sudo apt-get update
+sudo apt-get install nvidia-container-toolkit
+sudo systemctl restart docker
+```
+
+### Problema: Memoria Insuficiente
+```bash
+# Reducir modelo Whisper
+echo "WHISPER_MODEL=tiny" >> .env
+
+# Reducir límites de memoria
+echo "MAX_MEMORY=4G" >> .env
+echo "RESERVED_MEMORY=1G" >> .env
+```
+
+### Problema: Volumen NFS Inaccesible
+```bash
+# Verificar montaje
+mount | grep nfs
+
+# Verificar permisos
+ls -la /mnt/nfs/videos
+
+# Configurar UID/GID correctos
+echo "PUID=$(id -u)" >> .env
+echo "PGID=$(id -g)" >> .env
 ```
 
 ## 📁 Estructura del Proyecto
 
 ```
 syncdub-mvp/
-├── app/                    # Código de la aplicación
-│   ├── services/          # Lógica de negocio
-│   ├── utils/             # Utilidades
-│   ├── main.py            # Blueprint principal
-│   └── api.py             # API REST
-├── static/                # Archivos estáticos
-│   ├── css/              # Estilos CSS
-│   └── js/               # JavaScript
-├── templates/             # Plantillas HTML
-├── uploads/               # Archivos subidos (volumen)
-├── output/                # Archivos generados (volumen)
-├── models/                # Modelos de IA (volumen)
-├── config.py              # Configuración
-├── app.py                 # Aplicación principal
-├── requirements.txt       # Dependencias Python
-├── Dockerfile            # Imagen Docker
-├── docker-compose.yml    # Orquestación
-└── start.sh              # Script de inicio
+├── app/
+│   ├── services/
+│   │   └── sync_service.py      # Servicio de sincronización IA
+│   ├── utils/
+│   │   └── file_utils.py        # Utilidades de archivos
+│   ├── api.py                   # Endpoints API
+│   ├── main.py                  # Rutas principales
+│   └── __init__.py
+├── static/
+│   ├── css/
+│   │   └── style.css            # Estilos personalizados
+│   └── js/
+│       ├── main.js              # JavaScript principal
+│       └── upload.js            # JavaScript de upload
+├── templates/
+│   ├── base.html                # Template base
+│   ├── index.html               # Página principal
+│   ├── upload.html              # Página de upload
+│   └── status.html              # Página de estado
+├── uploads/                     # Archivos subidos
+├── output/                      # Archivos procesados
+├── models/                      # Modelos IA descargados
+├── video_source/                # Volumen NFS (opcional)
+├── app.py                       # Aplicación principal
+├── config.py                    # Configuración
+├── requirements.txt             # Dependencias Python
+├── Dockerfile                   # Imagen Docker
+├── docker-compose.yml           # Orquestación
+├── start.sh                     # Script de inicio
+├── .env.example                 # Variables de entorno
+└── README.md                    # Esta documentación
 ```
 
-## 🔍 Solución de Problemas
+## 🔒 Consideraciones de Seguridad
 
-### Problemas Comunes
+- **Archivos Temporales**: Se limpian automáticamente
+- **Validación**: Tipos y tamaños de archivo verificados
+- **Contenedor**: Usuario no-root por defecto
+- **Red**: Aislamiento con red personalizada
+- **Recursos**: Límites configurados para prevenir DoS
 
-**Error: "No se puede conectar al puerto 5000"**
-- Verifica que Docker esté ejecutándose
-- Asegúrate de que el puerto 5000 no esté en uso
-- Ejecuta: `docker-compose logs` para ver errores
+## 🚀 Optimizaciones de Rendimiento
 
-**Error: "Memoria insuficiente"**
-- Los modelos de IA requieren RAM significativa
-- Considera usar el modelo `tiny` de Whisper
-- Cierra otras aplicaciones que consuman memoria
+- **GPU**: Aceleración CUDA para Whisper y Transformers
+- **Memoria**: Gestión inteligente con limpieza automática
+- **Chunks**: Procesamiento por segmentos para archivos grandes
+- **Cache**: Modelos pre-descargados en imagen Docker
+- **Paralelización**: Múltiples hilos para operaciones I/O
 
-**Error: "Formato de archivo no soportado"**
-- Verifica que los archivos sean videos válidos
-- Formatos soportados: MP4, AVI, MKV, MOV, WMV, FLV, WebM
-- Intenta convertir el archivo con FFmpeg
+## 📈 Monitoreo y Métricas
 
-**Procesamiento muy lento**
-- El tiempo depende del tamaño del video y hardware
-- Considera usar un modelo Whisper más pequeño
-- Videos de 2 horas pueden tardar 10-30 minutos
+- **Healthcheck**: Verificación automática cada 30s
+- **Logs**: Rotación automática con límites de tamaño
+- **Recursos**: Monitoreo de CPU, memoria y GPU
+- **Tareas**: Seguimiento de estado y progreso
+- **Errores**: Logging detallado para debugging
 
-### Logs y Depuración
+## 🤝 Contribución
 
-```bash
-# Ver logs detallados
-docker-compose logs -f syncdub-app
-
-# Acceder al contenedor para depuración
-docker exec -it syncdub-mvp bash
-
-# Ver uso de recursos
-docker stats syncdub-mvp
-```
-
-## 🚧 Limitaciones Actuales
-
-- **Tamaño de archivo**: Máximo 2GB por video
-- **Formatos de salida**: Solo MKV
-- **Procesamiento**: Secuencial (un video a la vez)
-- **Persistencia**: Las tareas no persisten entre reinicios
-- **Interfaz**: Solo web (no CLI independiente)
-
-## 🔮 Mejoras Futuras (Roadmap)
-
-### Versión 1.1
-- [ ] Sincronización dinámica (DTW) para drift progresivo
-- [ ] Interfaz de corrección manual
-- [ ] Previsualización de audio sincronizado
-- [ ] Soporte para múltiples pistas (3+ idiomas)
-
-### Versión 1.2
-- [ ] Procesamiento por lotes (series completas)
-- [ ] Historial de trabajos
-- [ ] API REST completa
-- [ ] Integración con Jellyfin/Plex
-
-### Versión 2.0
-- [ ] Detección automática de idioma
-- [ ] Diarización y reconocimiento de hablantes
-- [ ] Generación automática de subtítulos
-- [ ] Interfaz de administración
-
-## 🤝 Contribuciones
-
-Las contribuciones son bienvenidas. Para cambios importantes:
-
-1. Abre un issue para discutir el cambio
-2. Fork el repositorio
-3. Crea una rama para tu feature
-4. Realiza los cambios con tests
-5. Envía un pull request
+1. Fork el proyecto
+2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
+3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
+4. Push a la rama (`git push origin feature/AmazingFeature`)
+5. Abre un Pull Request
 
 ## 📄 Licencia
 
-Este proyecto está bajo la Licencia MIT. Ver archivo `LICENSE` para más detalles.
+Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
 
-## 🙏 Reconocimientos
+## 🙏 Agradecimientos
 
-- **OpenAI Whisper**: Transcripción de audio
-- **Sentence Transformers**: Embeddings semánticos
-- **FFmpeg**: Procesamiento de video/audio
-- **Flask**: Framework web
-- **Bootstrap**: Framework CSS
-
-## 📞 Soporte
-
-Para reportar bugs o solicitar features:
-- Abre un issue en el repositorio
-- Incluye logs relevantes y pasos para reproducir
-- Especifica tu sistema operativo y versión de Docker
+- **OpenAI Whisper** - Transcripción de audio
+- **Sentence Transformers** - Análisis semántico
+- **FFmpeg** - Procesamiento de video/audio
+- **Flask** - Framework web
+- **Docker** - Containerización
+- **Bootstrap** - Interfaz de usuario
 
 ---
 
-**¡Disfruta sincronizando tus películas con SyncDub MVP! 🎬✨**
+**¿Necesitas ayuda?** Abre un issue en el repositorio o consulta la documentación de troubleshooting arriba. 🚀
 
