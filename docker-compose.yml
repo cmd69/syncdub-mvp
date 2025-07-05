@@ -11,36 +11,62 @@ services:
     ports:
       - "${APP_PORT:-5000}:5000"
 
+    # ===== VOLÚMENES CORREGIDOS =====
     volumes:
+      # Volúmenes locales del contenedor
       - ${UPLOADS_DIR:-./uploads}:/app/uploads
       - ${OUTPUT_DIR:-./output}:/app/output
       - ${MODELS_DIR:-./models}:/app/models
-      - ${MEDIA_SOURCE_PATH:-./video_source}:/app/video_source  # Montaje NFS ya configurado en host
+      
+      # ✅ MONTAJE NFS CORREGIDO - Bind mount directo al NFS del host
+      - ${MEDIA_SOURCE_PATH}:/app/video_source:ro  # Solo lectura para seguridad
+      
+      # NOTA: ${MEDIA_SOURCE_PATH} DEBE estar definido en .env y apuntar 
+      # a la ruta donde tienes montado el NFS en tu host
+      # Ejemplo: MEDIA_SOURCE_PATH=/mnt/nfs/videos
 
     environment:
       - FLASK_ENV=${FLASK_ENV:-production}
       - SECRET_KEY=${SECRET_KEY:-syncdub-secret-key-2024}
       - APP_PORT=${APP_PORT:-5000}
-      - MEDIA_SOURCE_ENABLED=${MEDIA_SOURCE_ENABLED:-false}
-      - MEDIA_SOURCE_PATH=/app/video_source
+      
+      # Configuración NFS
+      - MEDIA_SOURCE_ENABLED=${MEDIA_SOURCE_ENABLED:-true}
+      - MEDIA_SOURCE_PATH=/app/video_source  # Ruta dentro del contenedor
+      
+      # Usuario y permisos
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      
+      # Configuración de archivos
       - MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-21474836480}
       - ALLOWED_EXTENSIONS=${ALLOWED_EXTENSIONS:-mp4,avi,mkv,mov,wmv,flv,webm}
+      
+      # Modelos IA
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
       - SENTENCE_TRANSFORMER_MODEL=${SENTENCE_TRANSFORMER_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
       - SIMILARITY_THRESHOLD=${SIMILARITY_THRESHOLD:-0.7}
+      
+      # Audio
       - AUDIO_SAMPLE_RATE=${AUDIO_SAMPLE_RATE:-16000}
       - AUDIO_FORMAT=${AUDIO_FORMAT:-wav}
       - OUTPUT_AUDIO_BITRATE=${OUTPUT_AUDIO_BITRATE:-192k}
+      
+      # Procesamiento
       - NUM_THREADS=${NUM_THREADS:-0}
       - AUDIO_CHUNK_SIZE=${AUDIO_CHUNK_SIZE:-60}
       - MAX_PROCESSING_TIME=${MAX_PROCESSING_TIME:-3600}
+      
+      # Limpieza
       - AUTO_CLEANUP=${AUTO_CLEANUP:-true}
       - TASK_RETENTION_HOURS=${TASK_RETENTION_HOURS:-24}
+      
+      # Logging
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - FFMPEG_VERBOSE=${FFMPEG_VERBOSE:-false}
       - MEMORY_MONITORING=${MEMORY_MONITORING:-true}
+      
+      # Optimizaciones de memoria
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - MALLOC_TRIM_THRESHOLD_=100000
@@ -48,11 +74,14 @@ services:
       - OMP_NUM_THREADS=${OMP_NUM_THREADS:-2}
       - MKL_NUM_THREADS=${MKL_NUM_THREADS:-2}
       - NUMEXPR_MAX_THREADS=${NUMEXPR_MAX_THREADS:-2}
+      
+      # GPU
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
       - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
 
     runtime: nvidia
 
+    # Límites de recursos
     mem_limit: ${MAX_MEMORY:-8G}
     mem_reservation: ${RESERVED_MEMORY:-2G}
     memswap_limit: ${MAX_MEMORY:-8G}
@@ -87,6 +116,8 @@ networks:
       config:
         - subnet: ${NETWORK_SUBNET:-172.20.0.0/16}
 
+# ===== VOLÚMENES NOMBRADOS CORREGIDOS =====
+# Solo para volúmenes locales del contenedor, NO para NFS
 volumes:
   uploads:
     name: ${UPLOADS_VOLUME:-syncdub_uploads}
@@ -97,6 +128,7 @@ volumes:
   models:
     name: ${MODELS_VOLUME:-syncdub_models}
     driver: local
-  video_source:
-    name: ${MEDIA_VOLUME:-syncdub_media}
-    driver: local
+  
+  # ❌ ELIMINADO: video_source (causaba conflicto con bind mount NFS)
+  # El volumen NFS se monta directamente como bind mount desde el host
+

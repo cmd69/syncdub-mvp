@@ -1,499 +1,471 @@
 /**
- * SyncDub MVP - Upload Page JavaScript
+ * SyncDub MVP - JavaScript CORREGIDO
+ * URLs corregidas para coincidir con la API actual
  */
 
-class UploadManager {
+class SyncDubUploader {
     constructor() {
-        this.currentTaskId = null;
-        this.progressInterval = null;
-        this.originalCurrentPath = '';
-        this.dubbedCurrentPath = '';
+        this.currentPath = '';
+        this.selectedOriginal = null;
+        this.selectedDubbed = null;
+        this.nfsEnabled = false;
         
         this.init();
     }
-    
+
     init() {
         this.setupEventListeners();
-        this.setupFileInputs();
-        this.setupSourceToggling();
-        this.loadVolumeFiles();
+        this.checkNFSStatus();
     }
-    
+
     setupEventListeners() {
-        // Form submission
-        const form = document.getElementById('uploadForm');
-        if (form) {
-            form.addEventListener('submit', (e) => this.handleFormSubmit(e));
-        }
-        
-        // Source radio buttons
-        document.querySelectorAll('input[name="original_source"]').forEach(radio => {
-            radio.addEventListener('change', () => this.toggleOriginalSource());
+        // Selector de modo
+        document.querySelectorAll('input[name="uploadMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                this.switchMode(e.target.value);
+            });
         });
-        
-        document.querySelectorAll('input[name="dubbed_source"]').forEach(radio => {
-            radio.addEventListener('change', () => this.toggleDubbedSource());
+
+        // Botones de navegación
+        document.getElementById('btnBack')?.addEventListener('click', () => {
+            this.navigateUp();
         });
-        
-        // Custom filename validation
-        const customFilename = document.getElementById('customFilename');
-        if (customFilename) {
-            customFilename.addEventListener('input', () => this.validateCustomFilename());
-        }
+
+        document.getElementById('btnRefresh')?.addEventListener('click', () => {
+            this.loadDirectory(this.currentPath);
+        });
+
+        // Botón de procesamiento del servidor
+        document.getElementById('btnProcessServer')?.addEventListener('click', () => {
+            this.processServerFiles();
+        });
+
+        // Form de upload local
+        document.getElementById('uploadForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.processLocalFiles();
+        });
     }
-    
-    setupFileInputs() {
-        // Original video input
-        const originalInput = document.getElementById('originalVideo');
-        if (originalInput) {
-            originalInput.addEventListener('change', (e) => this.handleFileSelect(e, 'original'));
-            this.setupDragAndDrop(originalInput.closest('.upload-area'), originalInput);
-        }
-        
-        // Dubbed video input
-        const dubbedInput = document.getElementById('dubbedVideo');
-        if (dubbedInput) {
-            dubbedInput.addEventListener('change', (e) => this.handleFileSelect(e, 'dubbed'));
-            this.setupDragAndDrop(dubbedInput.closest('.upload-area'), dubbedInput);
-        }
-    }
-    
-    setupDragAndDrop(uploadArea, fileInput) {
-        if (!uploadArea || !fileInput) return;
-        
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            uploadArea.addEventListener(eventName, (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-            });
-        });
-        
-        ['dragenter', 'dragover'].forEach(eventName => {
-            uploadArea.addEventListener(eventName, () => {
-                uploadArea.classList.add('dragover');
-            });
-        });
-        
-        ['dragleave', 'drop'].forEach(eventName => {
-            uploadArea.addEventListener(eventName, () => {
-                uploadArea.classList.remove('dragover');
-            });
-        });
-        
-        uploadArea.addEventListener('drop', (e) => {
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                fileInput.files = files;
-                const event = new Event('change', { bubbles: true });
-                fileInput.dispatchEvent(event);
+
+    switchMode(mode) {
+        const localMode = document.getElementById('localMode');
+        const serverMode = document.getElementById('serverMode');
+
+        if (mode === 'local') {
+            localMode.style.display = 'block';
+            serverMode.style.display = 'none';
+        } else {
+            localMode.style.display = 'none';
+            serverMode.style.display = 'block';
+            if (this.nfsEnabled) {
+                this.loadDirectory('');
             }
-        });
-    }
-    
-    setupSourceToggling() {
-        this.toggleOriginalSource();
-        this.toggleDubbedSource();
-    }
-    
-    toggleOriginalSource() {
-        const uploadSelected = document.getElementById('original_upload').checked;
-        const uploadArea = document.getElementById('originalUploadArea');
-        const volumeArea = document.getElementById('originalVolumeArea');
-        
-        if (uploadArea) {
-            uploadArea.style.display = uploadSelected ? 'block' : 'none';
         }
-        if (volumeArea) {
-            volumeArea.style.display = uploadSelected ? 'none' : 'block';
-        }
-        
-        this.validateForm();
     }
-    
-    toggleDubbedSource() {
-        const uploadSelected = document.getElementById('dubbed_upload').checked;
-        const uploadArea = document.getElementById('dubbedUploadArea');
-        const volumeArea = document.getElementById('dubbedVolumeArea');
-        
-        if (uploadArea) {
-            uploadArea.style.display = uploadSelected ? 'block' : 'none';
-        }
-        if (volumeArea) {
-            volumeArea.style.display = uploadSelected ? 'none' : 'block';
-        }
-        
-        this.validateForm();
-    }
-    
-    handleFileSelect(event, type) {
-        const file = event.target.files[0];
-        const uploadArea = event.target.closest('.upload-area');
-        
-        if (!file || !uploadArea) return;
-        
-        // Validate file
-        const validation = SyncDub.validateFile(file);
-        if (!validation.valid) {
-            SyncDub.showToast(validation.error, 'danger');
-            event.target.value = '';
-            this.clearFileInfo(uploadArea);
-            this.validateForm();
-            return;
-        }
-        
-        // Show file info
-        this.showFileInfo(uploadArea, file);
-        this.validateForm();
-    }
-    
-    showFileInfo(uploadArea, file) {
-        const placeholder = uploadArea.querySelector('.upload-placeholder');
-        const fileInfo = uploadArea.querySelector('.file-info');
-        
-        if (placeholder) placeholder.classList.add('d-none');
-        if (fileInfo) {
-            fileInfo.classList.remove('d-none');
-            const filename = fileInfo.querySelector('.filename');
-            const filesize = fileInfo.querySelector('.filesize');
+
+    async checkNFSStatus() {
+        try {
+            console.log('🔍 Verificando estado NFS...');
+            // ✅ URL CORREGIDA: /api/nfs-config (con prefijo /api)
+            const response = await fetch('/api/nfs-config');
             
-            if (filename) filename.textContent = file.name;
-            if (filesize) filesize.textContent = `(${SyncDub.formatFileSize(file.size)})`;
+            if (response.ok) {
+                const data = await response.json();
+                console.log('✅ Respuesta NFS:', data);
+                
+                this.nfsEnabled = data.enabled && data.accessible;
+                this.updateNFSStatus(data);
+            } else {
+                console.error('❌ Error en /api/nfs-config:', response.status);
+                this.showNFSError(`Error del servidor: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('❌ Error verificando NFS:', error);
+            this.showNFSError(`Error de conexión: ${error.message}`);
         }
     }
-    
-    clearFileInfo(uploadArea) {
-        const placeholder = uploadArea.querySelector('.upload-placeholder');
-        const fileInfo = uploadArea.querySelector('.file-info');
-        
-        if (placeholder) placeholder.classList.remove('d-none');
-        if (fileInfo) fileInfo.classList.add('d-none');
-    }
-    
-    loadVolumeFiles() {
-        this.loadVolumeFilesForType('original');
-        this.loadVolumeFilesForType('dubbed');
-    }
-    
-    loadVolumeFilesForType(type) {
-        const fileList = document.getElementById(`${type}FileList`);
-        if (!fileList) return;
-        
-        const currentPath = type === 'original' ? this.originalCurrentPath : this.dubbedCurrentPath;
-        
-        fetch(`/api/media/list?path=${encodeURIComponent(currentPath)}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    this.showVolumeError(fileList, data.error);
-                } else {
-                    this.displayVolumeFiles(type, data.items, data.breadcrumbs);
-                }
-            })
-            .catch(error => {
-                console.error('Error loading volume files:', error);
-                this.showVolumeError(fileList, 'Error cargando archivos del servidor');
-            });
-    }
-    
-    displayVolumeFiles(type, items, breadcrumbs) {
-        const fileList = document.getElementById(`${type}FileList`);
-        const breadcrumb = document.getElementById(`${type}Breadcrumb`);
-        
-        if (!fileList) return;
-        
-        // Update breadcrumb
-        if (breadcrumb && breadcrumbs) {
-            breadcrumb.innerHTML = breadcrumbs.map(crumb => `
-                <li class="breadcrumb-item ${crumb.path === (type === 'original' ? this.originalCurrentPath : this.dubbedCurrentPath) ? 'active' : ''}">
-                    ${crumb.path === (type === 'original' ? this.originalCurrentPath : this.dubbedCurrentPath) ? 
-                        crumb.name : 
-                        `<a href="#" data-path="${crumb.path}">${crumb.name}</a>`
-                    }
-                </li>
-            `).join('');
+
+    updateNFSStatus(data) {
+        const statusBadge = document.getElementById('nfsStatus');
+        const serverInfo = document.getElementById('serverInfo');
+        const navigationArea = document.getElementById('navigationArea');
+        const selectionArea = document.getElementById('selectionArea');
+
+        if (this.nfsEnabled) {
+            statusBadge.textContent = 'Disponible';
+            statusBadge.className = 'badge bg-success ms-2';
             
-            // Add breadcrumb click handlers
-            breadcrumb.querySelectorAll('a').forEach(link => {
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    this.navigateToPath(type, link.dataset.path);
-                });
-            });
+            document.getElementById('serverPath').textContent = data.path;
+            document.getElementById('serverVideos').textContent = data.total_videos || 'Calculando...';
+            
+            serverInfo.style.display = 'block';
+            navigationArea.style.display = 'block';
+            selectionArea.style.display = 'block';
+        } else {
+            statusBadge.textContent = 'No disponible';
+            statusBadge.className = 'badge bg-danger ms-2';
+            this.showNFSError(data.error || 'Servidor NFS no accesible');
         }
+    }
+
+    showNFSError(message) {
+        const errorDiv = document.getElementById('serverError');
+        const errorMessage = document.getElementById('serverErrorMessage');
         
-        // Display files
-        if (items.length === 0) {
+        errorMessage.textContent = message;
+        errorDiv.style.display = 'block';
+        
+        document.getElementById('navigationArea').style.display = 'none';
+        document.getElementById('selectionArea').style.display = 'none';
+    }
+
+    async loadDirectory(path = '') {
+        try {
+            console.log(`🔍 Cargando directorio: "${path}"`);
+            
+            const fileList = document.getElementById('fileList');
             fileList.innerHTML = `
-                <div class="text-center text-muted py-3">
-                    <i class="fas fa-folder-open me-2"></i>
-                    No hay archivos en este directorio
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <p class="mt-2">Cargando archivos...</p>
                 </div>
             `;
-        } else {
-            fileList.innerHTML = items.map(item => this.createFileItem(type, item)).join('');
-            
-            // Add click handlers
-            fileList.querySelectorAll('.file-item').forEach(item => {
-                item.addEventListener('click', () => this.handleVolumeItemClick(type, item));
-            });
-        }
-    }
-    
-    createFileItem(type, item) {
-        const icon = item.type === 'directory' ? 
-            (item.is_parent ? 'fa-level-up-alt' : 'fa-folder') : 
-            'fa-file-video';
-        const iconColor = item.type === 'directory' ? 'text-warning' : 'text-info';
-        
-        return `
-            <div class="file-item ${item.type}" data-path="${item.path}" data-type="${item.type}" data-name="${item.name}">
-                <div class="d-flex align-items-center">
-                    <i class="fas ${icon} ${iconColor} me-2"></i>
-                    <div class="flex-grow-1">
-                        <div class="fw-medium">${item.name}</div>
-                        ${item.type === 'file' ? `<small class="text-muted">${item.size_formatted}</small>` : ''}
+
+            // ✅ URL CORREGIDA: /api/nfs-browse (con prefijo /api)
+            const url = `/api/nfs-browse${path ? `?path=${encodeURIComponent(path)}` : ''}`;
+            const response = await fetch(url);
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('✅ Directorio cargado:', data);
+                
+                this.currentPath = data.current_path;
+                this.updateBreadcrumb(data.breadcrumb);
+                this.renderFileList(data.items);
+                this.updateBackButton();
+            } else {
+                console.error('❌ Error cargando directorio:', response.status);
+                fileList.innerHTML = `
+                    <div class="alert alert-danger">
+                        Error cargando directorio: ${response.status}
                     </div>
-                    ${item.type === 'directory' ? '<i class="fas fa-chevron-right text-muted"></i>' : ''}
-                </div>
-            </div>
-        `;
-    }
-    
-    handleVolumeItemClick(type, itemElement) {
-        const itemType = itemElement.dataset.type;
-        const itemPath = itemElement.dataset.path;
-        const itemName = itemElement.dataset.name;
-        
-        if (itemType === 'directory') {
-            this.navigateToPath(type, itemPath);
-        } else {
-            this.selectVolumeFile(type, itemPath, itemName);
-        }
-    }
-    
-    navigateToPath(type, path) {
-        if (type === 'original') {
-            this.originalCurrentPath = path;
-        } else {
-            this.dubbedCurrentPath = path;
-        }
-        
-        this.loadVolumeFilesForType(type);
-    }
-    
-    selectVolumeFile(type, path, name) {
-        // Clear previous selections
-        const fileList = document.getElementById(`${type}FileList`);
-        if (fileList) {
-            fileList.querySelectorAll('.file-item').forEach(item => {
-                item.classList.remove('selected');
-            });
-        }
-        
-        // Select current item
-        const selectedItem = fileList.querySelector(`[data-path="${path}"]`);
-        if (selectedItem) {
-            selectedItem.classList.add('selected');
-        }
-        
-        // Update hidden input and info
-        const hiddenInput = document.getElementById(`${type}VolumeFile`);
-        const volumeInfo = document.getElementById(`${type}VolumeInfo`);
-        const selectedFileSpan = document.getElementById(`${type}SelectedFile`);
-        
-        if (hiddenInput) hiddenInput.value = path;
-        if (volumeInfo) volumeInfo.classList.remove('d-none');
-        if (selectedFileSpan) selectedFileSpan.textContent = `Seleccionado: ${name}`;
-        
-        this.validateForm();
-    }
-    
-    showVolumeError(fileList, error) {
-        fileList.innerHTML = `
-            <div class="text-center text-danger py-3">
-                <i class="fas fa-exclamation-triangle me-2"></i>
-                ${error}
-            </div>
-        `;
-    }
-    
-    validateCustomFilename() {
-        const input = document.getElementById('customFilename');
-        if (!input) return;
-        
-        const value = input.value.trim();
-        if (value) {
-            // Remove invalid characters
-            const cleaned = value.replace(/[^a-zA-Z0-9\-_\s]/g, '');
-            if (cleaned !== value) {
-                input.value = cleaned;
-                SyncDub.showToast('Se han removido caracteres no válidos del nombre', 'warning');
+                `;
             }
+        } catch (error) {
+            console.error('❌ Error en loadDirectory:', error);
+            document.getElementById('fileList').innerHTML = `
+                <div class="alert alert-danger">
+                    Error de conexión: ${error.message}
+                </div>
+            `;
         }
     }
-    
-    validateForm() {
-        const submitBtn = document.getElementById('submitBtn');
-        if (!submitBtn) return;
-        
-        let isValid = true;
-        
-        // Check original source
-        const originalUpload = document.getElementById('original_upload').checked;
-        if (originalUpload) {
-            const originalFile = document.getElementById('originalVideo').files[0];
-            if (!originalFile) isValid = false;
-        } else {
-            const originalVolumeFile = document.getElementById('originalVolumeFile').value;
-            if (!originalVolumeFile) isValid = false;
-        }
-        
-        // Check dubbed source
-        const dubbedUpload = document.getElementById('dubbed_upload').checked;
-        if (dubbedUpload) {
-            const dubbedFile = document.getElementById('dubbedVideo').files[0];
-            if (!dubbedFile) isValid = false;
-        } else {
-            const dubbedVolumeFile = document.getElementById('dubbedVolumeFile').value;
-            if (!dubbedVolumeFile) isValid = false;
-        }
-        
-        submitBtn.disabled = !isValid;
-    }
-    
-    async handleFormSubmit(event) {
-        event.preventDefault();
-        
-        const formData = new FormData(event.target);
-        
-        try {
-            this.showProgress();
+
+    updateBreadcrumb(breadcrumb) {
+        const breadcrumbEl = document.getElementById('breadcrumb');
+        breadcrumbEl.innerHTML = '';
+
+        breadcrumb.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = 'breadcrumb-item';
             
+            if (index === breadcrumb.length - 1) {
+                li.className += ' active';
+                li.textContent = item.name;
+            } else {
+                const a = document.createElement('a');
+                a.href = '#';
+                a.textContent = item.name;
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.loadDirectory(item.path);
+                });
+                li.appendChild(a);
+            }
+            
+            breadcrumbEl.appendChild(li);
+        });
+    }
+
+    updateBackButton() {
+        const btnBack = document.getElementById('btnBack');
+        btnBack.disabled = this.currentPath === '';
+    }
+
+    renderFileList(items) {
+        const fileList = document.getElementById('fileList');
+        
+        if (items.length === 0) {
+            fileList.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="fas fa-folder-open fa-3x mb-3"></i>
+                    <p>No hay archivos en este directorio</p>
+                </div>
+            `;
+            return;
+        }
+
+        const html = items.map(item => {
+            const icon = item.is_directory ? 'fas fa-folder' : 'fas fa-film';
+            const iconColor = item.is_directory ? 'text-warning' : 'text-primary';
+            
+            let info = '';
+            if (item.is_directory) {
+                info = `${item.total_items || 0} elementos`;
+                if (item.videos > 0) {
+                    info += `, ${item.videos} videos`;
+                }
+            } else {
+                info = item.size_formatted || '';
+            }
+
+            return `
+                <div class="file-item d-flex align-items-center p-2 border-bottom" 
+                     data-path="${item.path}" 
+                     data-is-directory="${item.is_directory}"
+                     data-is-video="${item.is_video}">
+                    <i class="${icon} ${iconColor} me-3"></i>
+                    <div class="flex-grow-1">
+                        <div class="fw-bold">${item.name}</div>
+                        <small class="text-muted">${info}</small>
+                    </div>
+                    <div class="file-actions">
+                        ${item.is_directory ? 
+                            '<button class="btn btn-sm btn-outline-primary btn-enter">Entrar</button>' :
+                            item.is_video ? 
+                                '<button class="btn btn-sm btn-primary btn-select-original me-1">Original</button><button class="btn btn-sm btn-success btn-select-dubbed">Doblado</button>' :
+                                ''
+                        }
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        fileList.innerHTML = html;
+
+        // Agregar event listeners
+        fileList.querySelectorAll('.btn-enter').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const item = e.target.closest('.file-item');
+                const path = item.dataset.path;
+                this.loadDirectory(path);
+            });
+        });
+
+        fileList.querySelectorAll('.btn-select-original').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const item = e.target.closest('.file-item');
+                this.selectFile('original', item);
+            });
+        });
+
+        fileList.querySelectorAll('.btn-select-dubbed').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const item = e.target.closest('.file-item');
+                this.selectFile('dubbed', item);
+            });
+        });
+
+        // Doble clic para entrar en directorios
+        fileList.querySelectorAll('.file-item[data-is-directory="true"]').forEach(item => {
+            item.addEventListener('dblclick', () => {
+                const path = item.dataset.path;
+                this.loadDirectory(path);
+            });
+        });
+    }
+
+    selectFile(type, itemElement) {
+        const path = itemElement.dataset.path;
+        const name = itemElement.querySelector('.fw-bold').textContent;
+
+        if (type === 'original') {
+            this.selectedOriginal = { path, name };
+            document.getElementById('selectedOriginal').innerHTML = `
+                <i class="fas fa-film text-primary"></i> ${name}
+                <button class="btn btn-sm btn-outline-danger ms-2" onclick="syncDubUploader.clearSelection('original')">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+        } else {
+            this.selectedDubbed = { path, name };
+            document.getElementById('selectedDubbed').innerHTML = `
+                <i class="fas fa-film text-success"></i> ${name}
+                <button class="btn btn-sm btn-outline-danger ms-2" onclick="syncDubUploader.clearSelection('dubbed')">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+        }
+
+        this.updateProcessButton();
+        this.showToast(`Archivo seleccionado como ${type}: ${name}`, 'success');
+    }
+
+    clearSelection(type) {
+        if (type === 'original') {
+            this.selectedOriginal = null;
+            document.getElementById('selectedOriginal').innerHTML = `
+                <i class="fas fa-film"></i> Ningún archivo seleccionado
+            `;
+        } else {
+            this.selectedDubbed = null;
+            document.getElementById('selectedDubbed').innerHTML = `
+                <i class="fas fa-film"></i> Ningún archivo seleccionado
+            `;
+        }
+
+        this.updateProcessButton();
+    }
+
+    updateProcessButton() {
+        const btnProcess = document.getElementById('btnProcessServer');
+        btnProcess.disabled = !this.selectedOriginal || !this.selectedDubbed;
+    }
+
+    navigateUp() {
+        if (this.currentPath === '') return;
+        
+        const pathParts = this.currentPath.split('/');
+        pathParts.pop();
+        const parentPath = pathParts.join('/');
+        
+        this.loadDirectory(parentPath);
+    }
+
+    async processServerFiles() {
+        if (!this.selectedOriginal || !this.selectedDubbed) {
+            this.showToast('Selecciona ambos archivos (original y doblado)', 'error');
+            return;
+        }
+
+        const outputName = document.getElementById('serverOutputName').value.trim();
+
+        try {
+            this.showProgress('Iniciando procesamiento desde servidor...');
+
+            // ✅ CORREGIDO: Usar /api/nfs-upload en lugar de /api/upload
+            const response = await fetch('/api/nfs-upload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    original_path: this.selectedOriginal.path,
+                    dubbed_path: this.selectedDubbed.path,
+                    custom_name: outputName
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.monitorTask(data.task_id);
+            } else {
+                const error = await response.json();
+                this.showError(`Error del servidor: ${error.error || response.status}`);
+            }
+        } catch (error) {
+            this.showError(`Error de conexión: ${error.message}`);
+        }
+    }
+
+    async processLocalFiles() {
+        const form = document.getElementById('uploadForm');
+        const formData = new FormData(form);
+
+        try {
+            this.showProgress('Subiendo archivos...');
+
+            // ✅ Para archivos locales, usar /api/upload (endpoint original)
             const response = await fetch('/api/upload', {
                 method: 'POST',
                 body: formData
             });
-            
-            const result = await response.json();
-            
+
             if (response.ok) {
-                this.currentTaskId = result.task_id;
-                this.startProgressMonitoring();
-                SyncDub.showToast('Procesamiento iniciado correctamente', 'success');
+                const data = await response.json();
+                this.monitorTask(data.task_id);
             } else {
-                throw new Error(result.error || 'Error en el servidor');
+                const error = await response.json();
+                this.showError(`Error del servidor: ${error.error || response.status}`);
             }
-            
         } catch (error) {
-            console.error('Upload error:', error);
-            this.showError(error.message);
-            SyncDub.showToast(error.message, 'danger');
+            this.showError(`Error de conexión: ${error.message}`);
         }
     }
-    
-    showProgress() {
-        document.getElementById('progressSection').classList.remove('d-none');
-        document.getElementById('resultSection').classList.add('d-none');
-        document.getElementById('errorSection').classList.add('d-none');
-    }
-    
-    startProgressMonitoring() {
-        if (this.progressInterval) {
-            clearInterval(this.progressInterval);
-        }
-        
-        this.progressInterval = setInterval(() => {
-            this.checkProgress();
-        }, 2000);
-        
-        // Initial check
-        this.checkProgress();
-    }
-    
-    async checkProgress() {
-        if (!this.currentTaskId) return;
-        
-        try {
-            const response = await fetch(`/api/status/${this.currentTaskId}`);
-            const status = await response.json();
-            
-            this.updateProgressDisplay(status);
-            
-            if (status.status === 'completed') {
-                this.showResult();
-                this.stopProgressMonitoring();
-            } else if (status.status === 'error') {
-                this.showError(status.error || 'Error desconocido');
-                this.stopProgressMonitoring();
+
+    async monitorTask(taskId) {
+        const checkStatus = async () => {
+            try {
+                const response = await fetch(`/api/status/${taskId}`);
+                const data = await response.json();
+
+                if (data.status === 'completed') {
+                    this.showResult(`/api/download/${taskId}`);
+                } else if (data.status === 'failed') {
+                    this.showError(data.error || 'Error en el procesamiento');
+                } else {
+                    this.updateProgress(data.progress || 0, data.message || 'Procesando...');
+                    setTimeout(checkStatus, 2000);
+                }
+            } catch (error) {
+                this.showError(`Error monitoreando tarea: ${error.message}`);
             }
-            
-        } catch (error) {
-            console.error('Progress check error:', error);
-        }
+        };
+
+        checkStatus();
     }
-    
-    updateProgressDisplay(status) {
+
+    showProgress(message) {
+        document.getElementById('progressArea').style.display = 'block';
+        document.getElementById('resultArea').style.display = 'none';
+        this.updateProgress(0, message);
+    }
+
+    updateProgress(percent, message) {
         const progressBar = document.getElementById('progressBar');
-        const progressMessage = document.getElementById('progressMessage');
+        const progressText = document.getElementById('progressText');
         
-        if (progressBar) {
-            SyncDub.updateProgress(progressBar, status.progress || 0);
-        }
-        
-        if (progressMessage) {
-            progressMessage.textContent = status.message || 'Procesando...';
-        }
+        progressBar.style.width = `${percent}%`;
+        progressText.textContent = message;
     }
-    
-    showResult() {
-        document.getElementById('progressSection').classList.add('d-none');
-        document.getElementById('resultSection').classList.remove('d-none');
+
+    showResult(downloadUrl) {
+        document.getElementById('progressArea').style.display = 'none';
+        document.getElementById('resultArea').style.display = 'block';
+        document.getElementById('downloadLink').href = downloadUrl;
         
-        const downloadBtn = document.getElementById('downloadBtn');
-        const customNameBadge = document.getElementById('customNameBadge');
-        const customFilename = document.getElementById('customFilename').value.trim();
-        
-        if (downloadBtn) {
-            downloadBtn.href = `/api/download/${this.currentTaskId}`;
-        }
-        
-        if (customNameBadge && customFilename) {
-            customNameBadge.textContent = `Archivo: ${customFilename}.mkv`;
-            customNameBadge.style.display = 'inline';
-        } else if (customNameBadge) {
-            customNameBadge.style.display = 'none';
-        }
-        
-        SyncDub.showToast('¡Sincronización completada exitosamente!', 'success');
+        this.showToast('¡Procesamiento completado!', 'success');
     }
-    
-    showError(error) {
-        document.getElementById('progressSection').classList.add('d-none');
-        document.getElementById('errorSection').classList.remove('d-none');
-        
-        const errorMessage = document.getElementById('errorMessage');
-        if (errorMessage) {
-            errorMessage.textContent = error;
-        }
+
+    showError(message) {
+        document.getElementById('progressArea').style.display = 'none';
+        this.showToast(message, 'error');
     }
-    
-    stopProgressMonitoring() {
-        if (this.progressInterval) {
-            clearInterval(this.progressInterval);
-            this.progressInterval = null;
-        }
+
+    showToast(message, type = 'info') {
+        // Crear toast simple
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} position-fixed`;
+        toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        toast.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+        `;
+        
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.remove();
+            }
+        }, 5000);
     }
 }
 
-// Initialize upload manager when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    new UploadManager();
-});
-
-// Clean up on page unload
-window.addEventListener('beforeunload', function() {
-    if (window.uploadManager && window.uploadManager.progressInterval) {
-        clearInterval(window.uploadManager.progressInterval);
-    }
+// Inicializar cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', () => {
+    window.syncDubUploader = new SyncDubUploader();
 });
 
