@@ -149,6 +149,26 @@
 
 {% block scripts %}
 <script>
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/nfs-config')
+        .then(response => response.json())
+        .then(data => {
+            const mediaStatus = document.getElementById('mediaStatus');
+            if (data.enabled && data.accessible && data.readable && !data.error) {
+                mediaStatus.innerHTML = '<i class="fas fa-check text-success"></i> Disponible';
+            } else if (data.error) {
+                mediaStatus.innerHTML = '<i class="fas fa-times text-danger"></i> Error: ' + data.error;
+            } else {
+                mediaStatus.innerHTML = '<i class="fas fa-times text-danger"></i> No disponible';
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching NFS config:', error);
+            document.getElementById('mediaStatus').innerHTML = '<i class="fas fa-times text-danger"></i> Error de conexión';
+        });
+});
+</script>
+<script>
 // Verificar estado del sistema al cargar la página
 document.addEventListener('DOMContentLoaded', function() {
     checkSystemStatus();
