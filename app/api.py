@@ -1,5 +1,5 @@
 """
-Blueprint de API para el procesamiento de archivos
+Blueprint de API para el procesamiento de archivos - CORREGIDO
 """
 
 import os
@@ -8,21 +8,10 @@ import json
 from pathlib import Path
 from flask import Blueprint, request, jsonify, current_app, send_file
 from werkzeug.utils import secure_filename
-from app.services.sync_service import SyncService
+from app.services.sync_service import sync_service
 from app.utils.file_utils import allowed_file, get_file_extension
 
 bp = Blueprint('api', __name__)
-
-# Instancia del servicio de sincronización
-sync_service = SyncService()
-
-@bp.route('/health', methods=['GET'])
-def health():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'message': 'SyncDub MVP API is running'
-    })
 
 @bp.route('/upload', methods=['POST'])
 def upload_files():
@@ -47,6 +36,9 @@ def upload_files():
                 'error': 'Formato de archivo no soportado. Use: mp4, avi, mkv, mov, wmv, flv, webm'
             }), 400
         
+        # Obtener nombre personalizado opcional
+        custom_name = request.form.get('custom_name', '').strip()
+        
         # Generar ID único para la tarea
         task_id = str(uuid.uuid4())
         
@@ -64,8 +56,14 @@ def upload_files():
         original_file.save(str(original_path))
         dubbed_file.save(str(dubbed_path))
         
-        # Iniciar procesamiento asíncrono
-        sync_service.start_sync_task(task_id, str(original_path), str(dubbed_path))
+        # CORREGIDO: Usar custom_name en lugar de custom_filename para consistencia
+        sync_service.start_sync_task(
+            task_id, 
+            str(original_path), 
+            str(dubbed_path),
+            custom_name=custom_name,
+            source_type='local'
+        )
         
         return jsonify({
             'task_id': task_id,
@@ -91,6 +89,7 @@ def get_status(task_id):
 def download_result(task_id):
     """Descargar archivo resultado"""
     try:
+        # CORREGIDO: get_result_path ahora devuelve solo la ruta como string
         result_path = sync_service.get_result_path(task_id)
         if result_path and os.path.exists(result_path):
             return send_file(result_path, as_attachment=True)
@@ -410,7 +409,7 @@ def nfs_upload():
         # Generar ID único para la tarea
         task_id = str(uuid.uuid4())
         
-        # Iniciar procesamiento con archivos NFS
+        # CORREGIDO: Usar custom_name en lugar de custom_filename para consistencia
         sync_service.start_sync_task(
             task_id, 
             str(original_full), 

@@ -31,7 +31,7 @@ services:
       - APP_PORT=${APP_PORT:-5000}
       
       # Configuración NFS
-      - MEDIA_SOURCE_ENABLED=${MEDIA_SOURCE_ENABLED:-true}
+      - MEDIA_SOURCE_ENABLED=${MEDIA_SOURCE_ENABLED:-false}
       - MEDIA_SOURCE_PATH=/app/video_source  # Ruta dentro del contenedor
       
       # Usuario y permisos
@@ -79,7 +79,8 @@ services:
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
       - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
 
-    runtime: nvidia
+    # Solo usar runtime nvidia si está disponible
+    runtime: ${DOCKER_RUNTIME:-runc}
 
     # Límites de recursos
     mem_limit: ${MAX_MEMORY:-8G}
@@ -128,7 +129,4 @@ volumes:
   models:
     name: ${MODELS_VOLUME:-syncdub_models}
     driver: local
-  
-  # ❌ ELIMINADO: video_source (causaba conflicto con bind mount NFS)
-  # El volumen NFS se monta directamente como bind mount desde el host
 
