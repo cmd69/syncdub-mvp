@@ -1,5 +1,5 @@
 """
-Servicio de sincronización de audio con IA - Versión GPU optimizada
+Servicio de sincronización de audio con IA - Versión GPU optimizada CORREGIDA
 """
 
 import os
@@ -57,7 +57,9 @@ class SyncService:
             usage_percent = memory.percent / 100.0
             
             if usage_percent > self.max_memory_usage:
-                current_app.logger.warning(f"High memory usage: {usage_percent:.1%}")
+                if self.app:
+                    with self.app.app_context():
+                        current_app.logger.warning(f"High memory usage: {usage_percent:.1%}")
                 return False
             return True
         except Exception:
@@ -88,9 +90,13 @@ class SyncService:
             except ImportError:
                 pass
             
-            current_app.logger.info("Memory cleanup completed")
+            if self.app:
+                with self.app.app_context():
+                    current_app.logger.info("Memory cleanup completed")
         except Exception as e:
-            current_app.logger.warning(f"Error during memory cleanup: {e}")
+            if self.app:
+                with self.app.app_context():
+                    current_app.logger.warning(f"Error during memory cleanup: {e}")
     
     def _load_ai_models_safe(self):
         """Cargar modelos de IA de forma segura con soporte GPU"""
@@ -100,7 +106,9 @@ class SyncService:
         try:
             # Verificar memoria disponible antes de cargar
             if not self._check_memory_usage():
-                current_app.logger.warning("Insufficient memory for AI models, using fallback mode")
+                if self.app:
+                    with self.app.app_context():
+                        current_app.logger.warning("Insufficient memory for AI models, using fallback mode")
                 return False
             
             # Cargar Whisper con soporte GPU
@@ -110,21 +118,32 @@ class SyncService:
                 
                 # Determinar dispositivo (GPU si está disponible)
                 device = "cuda" if torch.cuda.is_available() else "cpu"
-                current_app.logger.info(f"Using device: {device}")
+                if self.app:
+                    with self.app.app_context():
+                        current_app.logger.info(f"Using device: {device}")
                 
                 # Usar modelo base para balance entre calidad y recursos
-                model_name = current_app.config.get('WHISPER_MODEL', 'base')
-                current_app.logger.info(f"Loading Whisper model: {model_name}")
+                model_name = 'base'
+                if self.app:
+                    with self.app.app_context():
+                        model_name = current_app.config.get('WHISPER_MODEL', 'base')
+                        current_app.logger.info(f"Loading Whisper model: {model_name}")
                 
                 self.whisper_model = whisper.load_model(model_name, device=device)
-                current_app.logger.info(f"Whisper model '{model_name}' loaded successfully on {device}")
+                if self.app:
+                    with self.app.app_context():
+                        current_app.logger.info(f"Whisper model '{model_name}' loaded successfully on {device}")
             except Exception as e:
-                current_app.logger.warning(f"Failed to load Whisper: {e}")
+                if self.app:
+                    with self.app.app_context():
+                        current_app.logger.warning(f"Failed to load Whisper: {e}")
                 return False
             
             # Verificar memoria después de cargar Whisper
             if not self._check_memory_usage():
-                current_app.logger.warning("Memory limit reached after loading Whisper")
+                if self.app:
+                    with self.app.app_context():
+                        current_app.logger.warning("Memory limit reached after loading Whisper")
                 del self.whisper_model
                 self.whisper_model = None
                 return False
@@ -132,30 +151,48 @@ class SyncService:
             # Cargar Sentence Transformer
             try:
                 from sentence_transformers import SentenceTransformer
-                st_model_name = current_app.config.get('SENTENCE_TRANSFORMER_MODEL', 'paraphrase-multilingual-MiniLM-L12-v2')
-                current_app.logger.info(f"Loading Sentence Transformer: {st_model_name}")
+                st_model_name = 'paraphrase-multilingual-MiniLM-L12-v2'
+                if self.app:
+                    with self.app.app_context():
+                        st_model_name = current_app.config.get('SENTENCE_TRANSFORMER_MODEL', 'paraphrase-multilingual-MiniLM-L12-v2')
+                        current_app.logger.info(f"Loading Sentence Transformer: {st_model_name}")
                 
                 # Configurar dispositivo para sentence transformer
                 device_st = "cuda" if torch.cuda.is_available() else "cpu"
                 self.sentence_transformer = SentenceTransformer(st_model_name, device=device_st)
-                current_app.logger.info(f"Sentence Transformer loaded successfully on {device_st}")
+                if self.app:
+                    with self.app.app_context():
+                        current_app.logger.info(f"Sentence Transformer loaded successfully on {device_st}")
             except Exception as e:
-                current_app.logger.warning(f"Failed to load Sentence Transformer: {e}")
+                if self.app:
+                    with self.app.app_context():
+                        current_app.logger.warning(f"Failed to load Sentence Transformer: {e}")
                 # Continuar sin sentence transformer
             
             self._models_loaded = True
             return True
             
         except ImportError as e:
-            current_app.logger.warning(f"AI libraries not available: {e}")
+            if self.app:
+                with self.app.app_context():
+                    current_app.logger.warning(f"AI libraries not available: {e}")
             return False
         except Exception as e:
-            current_app.logger.error(f"Error loading AI models: {e}")
+            if self.app:
+                with self.app.app_context():
+                    current_app.logger.error(f"Error loading AI models: {e}")
             self._cleanup_memory()
             return False
     
-    def start_sync_task(self, task_id: str, original_path: str, dubbed_path: str, custom_filename: str = ''):
-        """Iniciar tarea de sincronización de forma asíncrona"""
+    def start_sync_task(self, task_id: str, original_path: str, dubbed_path: str, 
+                       custom_filename: str = '', custom_name: str = '', source_type: str = 'local'):
+        """Iniciar tarea de sincronización de forma asíncrona
+        
+        CORREGIDO: Acepta tanto custom_filename como custom_name para compatibilidad
+        """
+        # Usar custom_name si se proporciona, sino usar custom_filename
+        final_custom_name = custom_name if custom_name else custom_filename
+        
         with self._lock:
             self.tasks[task_id] = {
                 'id': task_id,
@@ -164,7 +201,9 @@ class SyncService:
                 'message': 'Iniciando procesamiento...',
                 'original_path': original_path,
                 'dubbed_path': dubbed_path,
-                'custom_filename': custom_filename,
+                'custom_filename': final_custom_name,  # Mantener nombre original del campo
+                'custom_name': final_custom_name,      # Agregar campo adicional para compatibilidad
+                'source_type': source_type,
                 'result_path': None,
                 'created_at': datetime.now().isoformat(),
                 'error': None,
@@ -486,7 +525,7 @@ class SyncService:
             
             # Determinar nombre del archivo
             task = self.tasks.get(task_id, {})
-            custom_filename = task.get('custom_filename', '')
+            custom_filename = task.get('custom_filename', '') or task.get('custom_name', '')
             
             if custom_filename:
                 if not custom_filename.lower().endswith('.mkv'):
@@ -566,12 +605,18 @@ class SyncService:
                     if os.path.exists(file_path):
                         os.remove(file_path)
                 except Exception as e:
-                    current_app.logger.warning(f"Error removing temp file {file_path}: {e}")
+                    if self.app:
+                        with self.app.app_context():
+                            current_app.logger.warning(f"Error removing temp file {file_path}: {e}")
             
-            current_app.logger.info(f"Cleaned up {len(temp_files)} temp files for task {task_id}")
+            if self.app:
+                with self.app.app_context():
+                    current_app.logger.info(f"Cleaned up {len(temp_files)} temp files for task {task_id}")
             
         except Exception as e:
-            current_app.logger.warning(f"Error during cleanup: {e}")
+            if self.app:
+                with self.app.app_context():
+                    current_app.logger.warning(f"Error during cleanup: {e}")
     
     def get_task_status(self, task_id: str):
         """Obtener estado de una tarea"""
@@ -588,17 +633,16 @@ class SyncService:
                 'created_at': task['created_at']
             }
     
-    def get_result_path(self, task_id: str) -> tuple:
-        """Obtener ruta del archivo resultado y nombre personalizado"""
+    def get_result_path(self, task_id: str):
+        """Obtener ruta del archivo resultado
+        
+        CORREGIDO: Devuelve solo la ruta como string para compatibilidad con la API
+        """
         with self._lock:
             task = self.tasks.get(task_id)
-            if task:
-                result_path = task.get('result_path')
-                custom_name = task.get('custom_filename', '')
-                if custom_name and not custom_name.lower().endswith('.mkv'):
-                    custom_name += '.mkv'
-                return result_path, custom_name
-            return None, None
+            if task and task.get('result_path'):
+                return task['result_path']
+            return None
     
     def list_all_tasks(self):
         """Listar todas las tareas"""
