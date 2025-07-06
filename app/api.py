@@ -7,6 +7,7 @@ import uuid
 import json
 from pathlib import Path
 from flask import Blueprint, request, jsonify, current_app, send_file
+from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from app.services.sync_service import sync_service
 from app.utils.file_utils import allowed_file, get_file_extension
@@ -14,6 +15,7 @@ from app.utils.file_utils import allowed_file, get_file_extension
 bp = Blueprint('api', __name__)
 
 @bp.route('/upload', methods=['POST'])
+@login_required
 def upload_files():
     """Endpoint para subir archivos de video"""
     try:
@@ -37,7 +39,7 @@ def upload_files():
             }), 400
         
         # Obtener nombre personalizado opcional
-        custom_name = request.form.get('custom_name', '').strip()
+        custom_name = request.form.get('custom_name', '').strip() or request.form.get('output_name', '').strip()
         
         # Generar ID único para la tarea
         task_id = str(uuid.uuid4())
@@ -61,8 +63,7 @@ def upload_files():
             task_id, 
             str(original_path), 
             str(dubbed_path),
-            custom_name=custom_name,
-            source_type='local'
+            custom_name=custom_name
         )
         
         return jsonify({
@@ -76,6 +77,7 @@ def upload_files():
         return jsonify({'error': 'Error interno del servidor'}), 500
 
 @bp.route('/status/<task_id>')
+@login_required
 def get_status(task_id):
     """Obtener estado del procesamiento"""
     try:
@@ -86,6 +88,7 @@ def get_status(task_id):
         return jsonify({'error': 'Error al obtener estado'}), 500
 
 @bp.route('/download/<task_id>')
+@login_required
 def download_result(task_id):
     """Descargar archivo resultado"""
     try:
@@ -100,6 +103,7 @@ def download_result(task_id):
         return jsonify({'error': 'Error al descargar archivo'}), 500
 
 @bp.route('/tasks')
+@login_required
 def list_tasks():
     """Listar todas las tareas"""
     try:
@@ -112,6 +116,7 @@ def list_tasks():
 # ===== ENDPOINTS PARA NAVEGACIÓN COMPLETA NFS =====
 
 @bp.route('/nfs-config')
+@login_required
 def nfs_config():
     """Obtener configuración del sistema NFS"""
     try:
@@ -181,6 +186,7 @@ def nfs_config():
         return jsonify({'error': 'Error obteniendo configuración NFS'}), 500
 
 @bp.route('/nfs-browse')
+@login_required
 def nfs_browse():
     """Navegar contenido del volumen NFS con soporte para subdirectorios"""
     try:
@@ -205,9 +211,17 @@ def nfs_browse():
         try:
             full_path = full_path.resolve()
             media_path_resolved = media_path.resolve()
+            
+            # Verificar que la ruta está dentro del directorio base
+            # Si media_path no existe, crear el directorio
+            if not media_path_resolved.exists():
+                media_path_resolved.mkdir(parents=True, exist_ok=True)
+            
+            # Verificar que full_path está dentro de media_path
             if not str(full_path).startswith(str(media_path_resolved)):
                 return jsonify({'error': 'Ruta no permitida por seguridad'}), 403
-        except Exception:
+        except Exception as e:
+            current_app.logger.error(f"Error en validación de ruta: {e}")
             return jsonify({'error': 'Ruta no válida'}), 400
         
         # Verificar que existe
@@ -222,136 +236,61 @@ def nfs_browse():
         video_extensions = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm']
         
         try:
-            # Obtener todos los elementos del directorio
-            all_items = list(full_path.iterdir())
-            
-            # Separar directorios y archivos
-            directories = []
-            video_files = []
-            
-            for item in sorted(all_items, key=lambda x: (not x.is_dir(), x.name.lower())):
+            for item in full_path.iterdir():
                 try:
-                    # Calcular ruta relativa desde el directorio base
-                    relative_path = item.relative_to(media_path)
-                    
                     item_info = {
                         'name': item.name,
-                        'path': str(relative_path),
-                        'is_directory': item.is_dir(),
+                        'path': str(item.relative_to(media_path)),
+                        'is_dir': item.is_dir(),
+                        'is_file': item.is_file(),
                         'is_video': False,
-                        'size': 0,
-                        'size_formatted': '',
-                        'accessible': True
+                        'size': None,
+                        'modified': None
                     }
                     
-                    if item.is_dir():
-                        # Para directorios, intentar contar contenido
+                    if item.is_file():
+                        # Obtener información del archivo
                         try:
-                            dir_items = list(item.iterdir())
-                            subdir_count = len([x for x in dir_items if x.is_dir()])
-                            video_count = len([x for x in dir_items if x.is_file() and 
-                                             any(x.name.lower().endswith(ext) for ext in video_extensions)])
+                            stat = item.stat()
+                            item_info['size'] = stat.st_size
+                            item_info['modified'] = stat.st_mtime
                             
-                            item_info['subdirectories'] = subdir_count
-                            item_info['videos'] = video_count
-                            item_info['total_items'] = len(dir_items)
-                            
-                        except PermissionError:
-                            item_info['accessible'] = False
-                            item_info['error'] = 'Sin permisos'
-                        except Exception as e:
-                            item_info['accessible'] = False
-                            item_info['error'] = 'Error de acceso'
-                        
-                        directories.append(item_info)
-                        
-                    elif item.is_file():
-                        # Verificar si es un archivo de video
-                        is_video = any(item.name.lower().endswith(ext) for ext in video_extensions)
-                        item_info['is_video'] = is_video
-                        
-                        if is_video:
-                            try:
-                                size = item.stat().st_size
-                                item_info['size'] = size
-                                item_info['size_formatted'] = format_file_size(size)
-                            except:
-                                item_info['size'] = 0
-                                item_info['size_formatted'] = 'Desconocido'
-                            
-                            video_files.append(item_info)
+                            # Verificar si es video
+                            if any(item.name.lower().endswith(ext) for ext in video_extensions):
+                                item_info['is_video'] = True
+                        except (OSError, PermissionError):
+                            # Archivo no accesible, continuar
+                            pass
                     
                     items.append(item_info)
                     
-                except Exception as e:
-                    current_app.logger.warning(f"Error procesando item {item}: {e}")
+                except (OSError, PermissionError):
+                    # Item no accesible, continuar
                     continue
-                    
-        except PermissionError:
-            return jsonify({'error': 'Sin permisos para acceder al directorio'}), 403
-        except Exception as e:
-            current_app.logger.error(f"Error listando directorio: {e}")
-            return jsonify({'error': f'Error listando directorio: {str(e)}'}), 500
-        
-        # Información de navegación
-        current_path = str(full_path.relative_to(media_path)) if full_path != media_path else ''
-        
-        # Construir breadcrumb
-        breadcrumb = []
-        if current_path:
-            parts = current_path.split('/')
-            path_so_far = ''
             
-            # Agregar raíz
-            breadcrumb.append({
-                'name': 'video_source',
-                'path': '',
-                'is_root': True
-            })
+            # Ordenar: directorios primero, luego archivos
+            items.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))
             
-            # Agregar cada parte del path
-            for part in parts:
-                if part:
-                    path_so_far = f"{path_so_far}/{part}" if path_so_far else part
-                    breadcrumb.append({
-                        'name': part,
-                        'path': path_so_far,
-                        'is_root': False
-                    })
-        else:
-            breadcrumb.append({
-                'name': 'video_source',
-                'path': '',
-                'is_root': True
-            })
-        
-        # Información del directorio padre
-        parent_path = None
-        if full_path != media_path:
-            parent_relative = full_path.parent.relative_to(media_path)
-            parent_path = str(parent_relative) if parent_relative != Path('.') else ''
-        
-        result = {
-            'success': True,
-            'current_path': current_path,
-            'parent_path': parent_path,
-            'breadcrumb': breadcrumb,
-            'items': items,
-            'summary': {
+            return jsonify({
+                'path': str(full_path.relative_to(media_path)) if full_path != media_path else '',
+                'parent_path': str(full_path.parent.relative_to(media_path)) if full_path.parent != media_path else '',
+                'items': items,
                 'total_items': len(items),
-                'directories': len(directories),
-                'video_files': len(video_files),
-                'other_files': len(items) - len(directories) - len(video_files)
-            }
-        }
-        
-        return jsonify(result), 200
+                'video_count': sum(1 for item in items if item['is_video'])
+            }), 200
+            
+        except PermissionError:
+            return jsonify({'error': 'Sin permisos para leer el directorio'}), 403
+        except Exception as e:
+            current_app.logger.error(f"Error listando contenido: {e}")
+            return jsonify({'error': 'Error listando contenido del directorio'}), 500
         
     except Exception as e:
         current_app.logger.error(f"Error en nfs_browse: {str(e)}")
-        return jsonify({'error': f'Error navegando directorio: {str(e)}'}), 500
+        return jsonify({'error': 'Error navegando directorio'}), 500
 
 @bp.route('/nfs-upload', methods=['POST'])
+@login_required
 def nfs_upload():
     """Procesar archivos seleccionados desde NFS"""
     try:
@@ -420,28 +359,80 @@ def nfs_upload():
         
         return jsonify({
             'task_id': task_id,
-            'message': 'Procesamiento iniciado con archivos del servidor.',
+            'message': 'Procesamiento iniciado desde NFS.',
             'status': 'processing',
             'original_file': original_path,
-            'dubbed_file': dubbed_path,
-            'custom_name': custom_name
+            'dubbed_file': dubbed_path
         }), 200
         
     except Exception as e:
         current_app.logger.error(f"Error en nfs_upload: {str(e)}")
         return jsonify({'error': 'Error interno del servidor'}), 500
 
+# ===== ENDPOINTS DE SISTEMA =====
+
+@bp.route('/system-info')
+def system_info():
+    """Información del sistema"""
+    try:
+        import psutil
+        
+        # Información del sistema
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        
+        # Información de la aplicación
+        app_info = {
+            'name': 'SyncDub MVP',
+            'version': '1.0.0',
+            'environment': current_app.config.get('FLASK_ENV', 'production'),
+            'debug': current_app.debug
+        }
+        
+        # Información del sistema
+        system_info = {
+            'cpu_percent': cpu_percent,
+            'memory_total': memory.total,
+            'memory_available': memory.available,
+            'memory_percent': memory.percent,
+            'disk_total': disk.total,
+            'disk_free': disk.free,
+            'disk_percent': disk.percent
+        }
+        
+        # Información de configuración
+        config_info = {
+            'media_source_enabled': current_app.config.get('MEDIA_SOURCE_ENABLED', False),
+            'media_source_path': current_app.config.get('MEDIA_SOURCE_PATH', ''),
+            'max_content_length': current_app.config.get('MAX_CONTENT_LENGTH', 0),
+            'allowed_extensions': list(current_app.config.get('ALLOWED_VIDEO_EXTENSIONS', set())),
+            'whisper_model': current_app.config.get('WHISPER_MODEL', 'base'),
+            'upload_folder': str(current_app.config.get('UPLOAD_FOLDER', '')),
+            'output_folder': str(current_app.config.get('OUTPUT_FOLDER', ''))
+        }
+        
+        return jsonify({
+            'app': app_info,
+            'system': system_info,
+            'config': config_info,
+            'timestamp': str(datetime.now())
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error en system_info: {str(e)}")
+        return jsonify({'error': 'Error obteniendo información del sistema'}), 500
+
 def format_file_size(bytes):
     """Formatear tamaño de archivo en formato legible"""
     if bytes == 0:
-        return '0 B'
+        return "0 B"
     
-    units = ['B', 'KB', 'MB', 'GB', 'TB']
+    size_names = ["B", "KB", "MB", "GB", "TB"]
     i = 0
-    
-    while bytes >= 1024 and i < len(units) - 1:
-        bytes /= 1024
+    while bytes >= 1024 and i < len(size_names) - 1:
+        bytes /= 1024.0
         i += 1
     
-    return f"{bytes:.1f} {units[i]}"
+    return f"{bytes:.1f} {size_names[i]}"
 

@@ -29,7 +29,17 @@ services:
       - FLASK_ENV=${FLASK_ENV:-production}
       - SECRET_KEY=${SECRET_KEY:-syncdub-secret-key-2024}
       - APP_PORT=${APP_PORT:-5000}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/syncdub.db}
       
+      # Configuración de autenticación
+      - DEFAULT_ADMIN_USER=${DEFAULT_ADMIN_USER:-admin}
+      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-admin}
+      - SESSION_TIMEOUT=${SESSION_TIMEOUT:-3600}
+      - REMEMBER_COOKIE_DURATION=${REMEMBER_COOKIE_DURATION:-86400}
+      
+      # Configuración de base de datos
+      - DATABASE_URL=${DATABASE_URL:-}
+
       # Configuración NFS
       - MEDIA_SOURCE_ENABLED=${MEDIA_SOURCE_ENABLED:-false}
       - MEDIA_SOURCE_PATH=/app/video_source  # Ruta dentro del contenedor

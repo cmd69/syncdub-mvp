@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Iniciar Sesión - SyncDub MVP{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white text-center">
+                    <h4><i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión</h4>
+                </div>
+                <div class="card-body">
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <form method="POST" id="loginForm">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">
+                                <i class="fas fa-user me-1"></i>Usuario
+                            </label>
+                            <input type="text" class="form-control" id="username" name="username" 
+                                   placeholder="Ingresa tu usuario" required autofocus>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="password" class="form-label">
+                                <i class="fas fa-lock me-1"></i>Contraseña
+                            </label>
+                            <input type="password" class="form-control" id="password" name="password" 
+                                   placeholder="Ingresa tu contraseña" required>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary" id="loginBtn">
+                                <i class="fas fa-sign-in-alt me-2"></i>Iniciar Sesión
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card-footer text-center text-muted">
+                    <small>
+                        <i class="fas fa-info-circle me-1"></i>
+                        Usuario por defecto: <strong>admin</strong> / <strong>admin</strong>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('loginForm').addEventListener('submit', function(e) {
+    const btn = document.getElementById('loginBtn');
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Iniciando sesión...';
+    btn.disabled = true;
+});
+</script>
+{% endblock %}
+

@@ -134,11 +134,11 @@
 
         <!-- Quick Actions -->
         <div class="text-center mt-5">
-            <a href="{{ url_for('main.upload') }}" class="btn btn-primary btn-lg me-3">
+            <a href="{{ url_for('upload') }}" class="btn btn-primary btn-lg me-3">
                 <i class="fas fa-upload me-2"></i>
                 Comenzar Sincronización
             </a>
-            <a href="{{ url_for('main.status') }}" class="btn btn-outline-secondary btn-lg">
+            <a href="{{ url_for('status') }}" class="btn btn-outline-secondary btn-lg">
                 <i class="fas fa-tasks me-2"></i>
                 Ver Estado
             </a>
@@ -184,7 +184,7 @@ function checkSystemStatus() {
                 statusElement.innerHTML = `
                     <i class="fas fa-check-circle text-success me-1"></i>
                     Sistema Operativo<br>
-                    <small class="text-muted">${data.memory_usage} memoria</small>
+                    <small class="text-muted">SyncDub MVP v${data.version || '1.0.0'}</small>
                 `;
             } else {
                 statusElement.innerHTML = `
@@ -203,21 +203,21 @@ function checkSystemStatus() {
 }
 
 function checkMediaStatus() {
-    fetch('/api/media/status')
+    fetch('/api/nfs-config')
         .then(response => response.json())
         .then(data => {
             const statusElement = document.getElementById('mediaStatus');
-            if (data.enabled && data.accessible) {
+            if (data.enabled && data.accessible && data.readable) {
                 statusElement.innerHTML = `
                     <i class="fas fa-check-circle text-success me-1"></i>
                     Volumen Montado<br>
-                    <small class="text-muted">${data.message}</small>
+                    <small class="text-muted">${data.total_videos || 0} videos disponibles</small>
                 `;
             } else if (data.enabled && !data.accessible) {
                 statusElement.innerHTML = `
                     <i class="fas fa-exclamation-triangle text-warning me-1"></i>
                     Volumen Inaccesible<br>
-                    <small class="text-muted">${data.error}</small>
+                    <small class="text-muted">${data.error || 'Error de acceso'}</small>
                 `;
             } else {
                 statusElement.innerHTML = `

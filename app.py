@@ -5,7 +5,9 @@ Aplicación principal de SyncDub MVP - ROUTING CORREGIDO
 import os
 import logging
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from datetime import datetime
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from config import Config
 from app.main import bp as main_bp
 
@@ -13,6 +15,22 @@ def create_app(config_class=Config):
     """Factory para crear la aplicación Flask"""
     app = Flask(__name__)
     app.config.from_object(config_class)
+
+    # Configurar base de datos
+    from app.models.database import init_db
+    init_db(app)
+    
+    # Configurar Flask-Login
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = 'login'
+    login_manager.login_message = 'Por favor inicia sesión para acceder a esta página.'
+    login_manager.login_message_category = 'info'
+    
+    @login_manager.user_loader
+    def load_user(user_id):
+        from app.models.user import User
+        return User.query.get(int(user_id))
 
     # [1]: Registrar el blueprint principal
     app.register_blueprint(main_bp)
@@ -43,18 +61,80 @@ def create_app(config_class=Config):
     from app.api import bp as api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
     
-    # Rutas principales
+    # Rutas de autenticación
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        """Página de login"""
+        if current_user.is_authenticated:
+            return redirect(url_for('dashboard'))
+        
+        if request.method == 'POST':
+            username = request.form.get('username')
+            password = request.form.get('password')
+            
+            if not username or not password:
+                flash('Por favor ingresa usuario y contraseña', 'error')
+                return render_template('login.html')
+            
+            from app.models.user import User
+            user = User.query.filter_by(username=username).first()
+            
+            if user and user.check_password(password):
+                login_user(user, remember=True)
+                user.update_last_login()
+                flash(f'¡Bienvenido, {user.username}!', 'success')
+                next_page = request.args.get('next')
+                return redirect(next_page or url_for('dashboard'))
+            else:
+                flash('Usuario o contraseña incorrectos', 'error')
+        
+        return render_template('login.html')
+    
+    @app.route('/logout')
+    @login_required
+    def logout():
+        """Cerrar sesión"""
+        logout_user()
+        flash('Has cerrado sesión correctamente', 'info')
+        return redirect(url_for('login'))
+    
+    @app.route('/dashboard')
+    @login_required
+    def dashboard():
+        """Dashboard del usuario"""
+        # Obtener estadísticas del usuario
+        from app.models.sync_job import SyncJob
+        
+        total_jobs = SyncJob.query.filter_by(user_id=current_user.id).count()
+        completed_jobs = SyncJob.query.filter_by(user_id=current_user.id, status='completed').count()
+        processing_jobs = SyncJob.query.filter_by(user_id=current_user.id, status='processing').count()
+        failed_jobs = SyncJob.query.filter_by(user_id=current_user.id, status='failed').count()
+        
+        stats = {
+            'total': total_jobs,
+            'completed': completed_jobs,
+            'processing': processing_jobs,
+            'failed': failed_jobs
+        }
+        
+        return render_template('dashboard.html', stats=stats)
+    
+    # Rutas principales (protegidas)
     @app.route('/')
     def index():
         """Página principal"""
+        if current_user.is_authenticated:
+            return redirect(url_for('dashboard'))
         return render_template('index.html')
     
     @app.route('/upload')
+    @login_required
     def upload():
         """Página de subida de archivos"""
         return render_template('upload.html')
     
     @app.route('/status')
+    @login_required
     def status():
         """Página de estado de tareas"""
         return render_template('status.html')
@@ -98,7 +178,6 @@ def create_app(config_class=Config):
     return app
 
 if __name__ == '__main__':
-    from datetime import datetime
     app = create_app()
     app.run(host='0.0.0.0', port=5000, debug=True)
 

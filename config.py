@@ -14,6 +14,16 @@ class Config:
     OUTPUT_FOLDER = BASE_DIR / 'output'
     MODELS_FOLDER = BASE_DIR / 'models'
     
+    # Configuración de base de datos
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', f'sqlite:///{BASE_DIR}/syncdub.db')
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    
+    # Configuración de autenticación
+    DEFAULT_ADMIN_USER = os.environ.get('DEFAULT_ADMIN_USER', 'admin')
+    DEFAULT_ADMIN_PASSWORD = os.environ.get('DEFAULT_ADMIN_PASSWORD', 'admin')
+    SESSION_TIMEOUT = int(os.environ.get('SESSION_TIMEOUT', 3600))  # 1 hora
+    REMEMBER_COOKIE_DURATION = int(os.environ.get('REMEMBER_COOKIE_DURATION', 86400))  # 24 horas
+    
     # Configuración de volumen de medios
     MEDIA_SOURCE_ENABLED = os.environ.get('MEDIA_SOURCE_ENABLED', 'false').lower() == 'true'
     MEDIA_SOURCE_PATH = os.environ.get('MEDIA_SOURCE_PATH', str(BASE_DIR / 'video_source'))
@@ -68,11 +78,32 @@ class Config:
 class DevelopmentConfig(Config):
     """Configuración para desarrollo"""
     DEBUG = True
-    WHISPER_MODEL = 'tiny'  # Modelo más pequeño para desarrollo
-    
+    SQLALCHEMY_TRACK_MODIFICATIONS = True
+
 class ProductionConfig(Config):
     """Configuración para producción"""
     DEBUG = False
+    
+    @classmethod
+    def init_app(cls, app):
+        Config.init_app(app)
+        
+        # Configurar logging para producción
+        import logging
+        from logging.handlers import RotatingFileHandler
+        
+        if not app.debug and not app.testing:
+            if not os.path.exists('logs'):
+                os.mkdir('logs')
+            
+            file_handler = RotatingFileHandler('logs/syncdub.log', maxBytes=10240000, backupCount=10)
+            file_handler.setFormatter(logging.Formatter(
+                '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+            ))
+            file_handler.setLevel(logging.INFO)
+            app.logger.addHandler(file_handler)
+            app.logger.setLevel(logging.INFO)
+            app.logger.info('SyncDub MVP startup')
 
 # Configuraciones disponibles
 config = {

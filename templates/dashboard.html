@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - SyncDub MVP{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header del Dashboard -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-tachometer-alt me-2"></i>Dashboard</h2>
+                    <p class="text-muted mb-0">Bienvenido, {{ current_user.username }}</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('upload') }}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Nuevo Trabajo
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estadísticas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h5>Total Trabajos</h5>
+                            <h3 id="totalJobs">{{ stats.total }}</h3>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-tasks fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h5>Completados</h5>
+                            <h3 id="completedJobs">{{ stats.completed }}</h3>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-check-circle fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h5>En Proceso</h5>
+                            <h3 id="processingJobs">{{ stats.processing }}</h3>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-cog fa-spin fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h5>Con Error</h5>
+                            <h3 id="errorJobs">{{ stats.error }}</h3>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-exclamation-triangle fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <label for="statusFilter" class="form-label">Filtrar por estado:</label>
+                            <select class="form-select" id="statusFilter">
+                                <option value="">Todos los estados</option>
+                                <option value="pending">Pendiente</option>
+                                <option value="processing">En proceso</option>
+                                <option value="completed">Completado</option>
+                                <option value="error">Error</option>
+                                <option value="cancelled">Cancelado</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="searchInput" class="form-label">Buscar:</label>
+                            <input type="text" class="form-control" id="searchInput" 
+                                   placeholder="Buscar por nombre de archivo...">
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button class="btn btn-outline-secondary me-2" onclick="refreshJobs()">
+                                <i class="fas fa-sync-alt"></i> Actualizar
+                            </button>
+                            <button class="btn btn-outline-danger" onclick="clearFilters()">
+                                <i class="fas fa-times"></i> Limpiar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Trabajos -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-list me-2"></i>Historial de Trabajos</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover" id="jobsTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Estado</th>
+                                    <th>Archivo Original</th>
+                                    <th>Archivo Doblado</th>
+                                    <th>Progreso</th>
+                                    <th>Tiempo Ejecución</th>
+                                    <th>Creado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="jobsTableBody">
+                                <!-- Los trabajos se cargarán aquí via JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Loading indicator -->
+                    <div id="loadingIndicator" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Cargando...</span>
+                        </div>
+                        <p class="mt-2">Cargando trabajos...</p>
+                    </div>
+                    
+                    <!-- Empty state -->
+                    <div id="emptyState" class="text-center py-5" style="display: none;">
+                        <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No hay trabajos</h5>
+                        <p class="text-muted">Aún no has creado ningún trabajo de sincronización.</p>
+                        <a href="{{ url_for('upload') }}" class="btn btn-primary">
+                            <i class="fas fa-plus me-2"></i>Crear Primer Trabajo
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let allJobs = [];
+let filteredJobs = [];
+
+// Cargar trabajos al cargar la página
+document.addEventListener('DOMContentLoaded', function() {
+    loadJobs();
+    
+    // Configurar filtros
+    document.getElementById('statusFilter').addEventListener('change', applyFilters);
+    document.getElementById('searchInput').addEventListener('input', applyFilters);
+});
+
+function loadJobs() {
+    document.getElementById('loadingIndicator').style.display = 'block';
+    document.getElementById('emptyState').style.display = 'none';
+    
+    fetch('/api/jobs')
+        .then(response => response.json())
+        .then(data => {
+            allJobs = data.tasks || [];
+            filteredJobs = [...allJobs];
+            updateJobsTable();
+            updateStats();
+        })
+        .catch(error => {
+            console.error('Error loading jobs:', error);
+            showError('Error cargando trabajos');
+        })
+        .finally(() => {
+            document.getElementById('loadingIndicator').style.display = 'none';
+        });
+}
+
+function updateJobsTable() {
+    const tbody = document.getElementById('jobsTableBody');
+    
+    if (filteredJobs.length === 0) {
+        document.getElementById('emptyState').style.display = 'block';
+        tbody.innerHTML = '';
+        return;
+    }
+    
+    document.getElementById('emptyState').style.display = 'none';
+    
+    tbody.innerHTML = filteredJobs.map(job => `
+        <tr>
+            <td>
+                <small class="font-monospace">${job.task_id.substring(0, 8)}...</small>
+            </td>
+            <td>
+                <span class="badge bg-${getStatusColor(job.status)}">
+                    ${getStatusText(job.status)}
+                </span>
+            </td>
+            <td>
+                <small title="${job.original_file_path}">
+                    ${getFileName(job.original_file_path)}
+                </small>
+            </td>
+            <td>
+                <small title="${job.dubbed_file_path}">
+                    ${getFileName(job.dubbed_file_path)}
+                </small>
+            </td>
+            <td>
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar bg-${getStatusColor(job.status)}" 
+                         style="width: ${job.progress}%">
+                        ${job.progress}%
+                    </div>
+                </div>
+            </td>
+            <td>
+                <small>${job.execution_time_formatted || 'N/A'}</small>
+            </td>
+            <td>
+                <small>${formatDate(job.created_at)}</small>
+            </td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    ${getActionButtons(job)}
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function getStatusColor(status) {
+    const colors = {
+        'pending': 'secondary',
+        'processing': 'warning',
+        'completed': 'success',
+        'error': 'danger',
+        'cancelled': 'dark'
+    };
+    return colors[status] || 'secondary';
+}
+
+function getStatusText(status) {
+    const texts = {
+        'pending': 'Pendiente',
+        'processing': 'En Proceso',
+        'completed': 'Completado',
+        'error': 'Error',
+        'cancelled': 'Cancelado'
+    };
+    return texts[status] || status;
+}
+
+function getFileName(path) {
+    if (!path) return 'N/A';
+    return path.split('/').pop() || path;
+}
+
+function getActionButtons(job) {
+    let buttons = `
+        <button class="btn btn-outline-info btn-sm" onclick="viewJobDetails('${job.task_id}')" 
+                title="Ver detalles">
+            <i class="fas fa-eye"></i>
+        </button>
+    `;
+    
+    if (job.status === 'completed' && job.output_file_path) {
+        buttons += `
+            <a href="/api/download/${job.task_id}" class="btn btn-outline-success btn-sm" 
+               title="Descargar resultado">
+                <i class="fas fa-download"></i>
+            </a>
+        `;
+    }
+    
+    if (job.status === 'processing') {
+        buttons += `
+            <button class="btn btn-outline-warning btn-sm" onclick="refreshJobStatus('${job.task_id}')" 
+                    title="Actualizar estado">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        `;
+    }
+    
+    return buttons;
+}
+
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function applyFilters() {
+    const statusFilter = document.getElementById('statusFilter').value;
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    
+    filteredJobs = allJobs.filter(job => {
+        const matchesStatus = !statusFilter || job.status === statusFilter;
+        const matchesSearch = !searchTerm || 
+            getFileName(job.original_file_path).toLowerCase().includes(searchTerm) ||
+            getFileName(job.dubbed_file_path).toLowerCase().includes(searchTerm) ||
+            (job.custom_filename && job.custom_filename.toLowerCase().includes(searchTerm));
+        
+        return matchesStatus && matchesSearch;
+    });
+    
+    updateJobsTable();
+}
+
+function clearFilters() {
+    document.getElementById('statusFilter').value = '';
+    document.getElementById('searchInput').value = '';
+    filteredJobs = [...allJobs];
+    updateJobsTable();
+}
+
+function refreshJobs() {
+    loadJobs();
+}
+
+function updateStats() {
+    const stats = {
+        total: allJobs.length,
+        completed: allJobs.filter(j => j.status === 'completed').length,
+        processing: allJobs.filter(j => j.status === 'processing').length,
+        error: allJobs.filter(j => j.status === 'error').length
+    };
+    
+    document.getElementById('totalJobs').textContent = stats.total;
+    document.getElementById('completedJobs').textContent = stats.completed;
+    document.getElementById('processingJobs').textContent = stats.processing;
+    document.getElementById('errorJobs').textContent = stats.error;
+}
+
+function viewJobDetails(taskId) {
+    // Implementar modal o página de detalles
+    window.location.href = `/status/${taskId}`;
+}
+
+function refreshJobStatus(taskId) {
+    fetch(`/api/status/${taskId}`)
+        .then(response => response.json())
+        .then(data => {
+            // Actualizar el trabajo específico en la lista
+            const jobIndex = allJobs.findIndex(j => j.task_id === taskId);
+            if (jobIndex !== -1) {
+                allJobs[jobIndex] = { ...allJobs[jobIndex], ...data };
+                applyFilters();
+                updateStats();
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing job status:', error);
+        });
+}
+
+function showError(message) {
+    // Implementar notificación de error
+    console.error(message);
+}
+</script>
+{% endblock %}
+
