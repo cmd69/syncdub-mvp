@@ -7,6 +7,8 @@ SyncDub MVP es una aplicación web que utiliza inteligencia artificial local par
 ![Pantalla Principal](docs/captura0.png)
 
 ![Procesamiento Videos](docs/captura1.png)
+![Procesamiento Videos](docs/captura2.png)
+![Procesamiento Videos](docs/captura3.png)
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://docker.com)
 [![GPU](https://img.shields.io/badge/GPU-CUDA%20Accelerated-green?logo=nvidia)](https://nvidia.com)
