@@ -227,13 +227,16 @@ class SyncService:
     def _process_sync_task(self, task_id: str):
         """Procesamiento optimizado de sincronización de audio para archivos grandes"""
         try:
-            current_app.logger.info(f"Starting sync task: {task_id}")
+            current_app.logger.info(f"=== STARTING SYNC TASK: {task_id} ===")
             
             # Verificar archivos de entrada
             self._update_task_status(task_id, 'processing', 5, "Verificando archivos de entrada...")
             task = self.tasks[task_id]
             original_path = task['original_path']
             dubbed_path = task['dubbed_path']
+            
+            current_app.logger.info(f"Original video path: {original_path}")
+            current_app.logger.info(f"Dubbed video path: {dubbed_path}")
             
             if not os.path.exists(original_path):
                 raise Exception(f"Archivo original no encontrado: {original_path}")
@@ -256,38 +259,56 @@ class SyncService:
             
             # Extraer audio de ambos videos
             self._update_task_status(task_id, 'processing', 15, "Extrayendo audio del video original...")
+            current_app.logger.info("Extracting audio from original video...")
             original_audio = self._extract_audio_optimized(original_path, task_id, "original")
+            current_app.logger.info(f"Original audio extracted: {original_audio}")
             
             self._update_task_status(task_id, 'processing', 25, "Extrayendo audio del video doblado...")
+            current_app.logger.info("Extracting audio from dubbed video...")
             dubbed_audio = self._extract_audio_optimized(dubbed_path, task_id, "dubbed")
+            current_app.logger.info(f"Dubbed audio extracted: {dubbed_audio}")
             
             # Cargar modelos IA de forma segura
             self._update_task_status(task_id, 'processing', 35, "Preparando modelos de IA...")
+            current_app.logger.info("Loading AI models...")
             ai_available = self._load_ai_models_safe()
+            current_app.logger.info(f"AI models available: {ai_available}")
             
             if ai_available:
                 # Transcribir audios con IA
                 self._update_task_status(task_id, 'processing', 45, "Transcribiendo audio original...")
+                current_app.logger.info("Transcribing original audio with AI...")
                 original_segments = self._transcribe_audio_safe(original_audio, task_id)
+                current_app.logger.info(f"Original segments: {len(original_segments)}")
                 
                 self._update_task_status(task_id, 'processing', 60, "Transcribiendo audio doblado...")
+                current_app.logger.info("Transcribing dubbed audio with AI...")
                 dubbed_segments = self._transcribe_audio_safe(dubbed_audio, task_id)
+                current_app.logger.info(f"Dubbed segments: {len(dubbed_segments)}")
                 
                 # Calcular offset con análisis semántico
                 self._update_task_status(task_id, 'processing', 75, "Calculando sincronización...")
+                current_app.logger.info("Calculating sync offset with semantic analysis...")
                 time_offset = self._calculate_sync_offset_safe(original_segments, dubbed_segments)
             else:
                 # Modo fallback sin IA
                 self._update_task_status(task_id, 'processing', 60, "Usando modo de compatibilidad...")
+                current_app.logger.info("Using fallback mode without AI...")
                 time_offset = self._calculate_simple_offset_from_audio(original_audio, dubbed_audio)
+            
+            current_app.logger.info(f"=== CALCULATED TIME OFFSET: {time_offset:.3f} seconds ===")
             
             # Aplicar sincronización
             self._update_task_status(task_id, 'processing', 85, "Aplicando sincronización...")
+            current_app.logger.info(f"Applying sync offset: {time_offset:.3f}s")
             synced_audio = self._apply_sync_offset(dubbed_audio, time_offset, task_id)
+            current_app.logger.info(f"Synced audio created: {synced_audio}")
             
             # Generar archivo MKV final
             self._update_task_status(task_id, 'processing', 95, "Generando archivo MKV final...")
+            current_app.logger.info("Generating final MKV file...")
             result_path = self._generate_mkv_final(original_path, original_audio, synced_audio, task_id)
+            current_app.logger.info(f"Final MKV generated: {result_path}")
             
             # Completar tarea
             with self._lock:
@@ -296,10 +317,10 @@ class SyncService:
                 self.tasks[task_id]['progress'] = 100
                 self.tasks[task_id]['message'] = '¡Sincronización completada exitosamente!'
             
-            current_app.logger.info(f"Task completed successfully: {task_id}")
+            current_app.logger.info(f"=== TASK COMPLETED SUCCESSFULLY: {task_id} ===")
             
         except Exception as e:
-            current_app.logger.error(f"Error processing task {task_id}: {str(e)}")
+            current_app.logger.error(f"=== ERROR PROCESSING TASK {task_id}: {str(e)} ===")
             self._update_task_error(task_id, f"Error en el procesamiento: {str(e)}")
         finally:
             # Limpiar archivos temporales y memoria
@@ -309,8 +330,12 @@ class SyncService:
     def _extract_audio_optimized(self, video_path: str, task_id: str, prefix: str) -> str:
         """Extraer audio de forma optimizada para archivos grandes"""
         try:
+            current_app.logger.info(f"=== EXTRACTING AUDIO: {prefix} ===")
+            current_app.logger.info(f"Input video: {video_path}")
+            
             temp_dir = tempfile.gettempdir()
             audio_path = os.path.join(temp_dir, f"{prefix}_{task_id}.wav")
+            current_app.logger.info(f"Output audio: {audio_path}")
             
             # Comando FFmpeg optimizado para archivos grandes
             cmd = [
@@ -326,9 +351,14 @@ class SyncService:
                 audio_path
             ]
             
+            current_app.logger.info(f"FFmpeg audio extraction command: {' '.join(cmd)}")
+            
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)  # 30 min timeout
             if result.returncode != 0:
+                current_app.logger.error(f"FFmpeg audio extraction error: {result.stderr}")
                 raise Exception(f"Error extrayendo audio: {result.stderr}")
+            
+            current_app.logger.info(f"Audio extraction completed successfully for {prefix}")
             
             # Agregar a archivos temporales
             with self._lock:
@@ -338,8 +368,10 @@ class SyncService:
             return audio_path
             
         except subprocess.TimeoutExpired:
+            current_app.logger.error(f"Timeout extracting audio for {prefix}")
             raise Exception("Timeout extrayendo audio - archivo demasiado grande o proceso bloqueado")
         except Exception as e:
+            current_app.logger.error(f"Error extracting audio for {prefix}: {str(e)}")
             raise Exception(f"Error extrayendo audio: {str(e)}")
     
     def _transcribe_audio_safe(self, audio_path: str, task_id: str) -> List[AudioSegment]:
@@ -353,6 +385,8 @@ class SyncService:
                 current_app.logger.warning("Insufficient memory for transcription, using fallback")
                 return self._create_fallback_segments(audio_path)
             
+            current_app.logger.info(f"Starting transcription of: {audio_path}")
+            
             # Transcribir con configuración optimizada para archivos grandes
             result = self.whisper_model.transcribe(
                 audio_path,
@@ -365,6 +399,10 @@ class SyncService:
                 patience=1.0
             )
             
+            # Mostrar información de la transcripción
+            detected_language = result.get('language', 'unknown')
+            current_app.logger.info(f"Detected language: {detected_language}")
+            
             segments = []
             for segment in result.get('segments', []):
                 audio_segment = AudioSegment(
@@ -376,6 +414,13 @@ class SyncService:
                 segments.append(audio_segment)
             
             current_app.logger.info(f"Transcribed {len(segments)} segments")
+            
+            # Mostrar algunos ejemplos de transcripción
+            if segments:
+                current_app.logger.info("=== SAMPLE TRANSCRIPTIONS ===")
+                for i, seg in enumerate(segments[:3]):
+                    current_app.logger.info(f"Segment {i} ({seg.start:.1f}s-{seg.end:.1f}s): '{seg.text}'")
+            
             return segments
             
         except Exception as e:
@@ -408,25 +453,59 @@ class SyncService:
                                    dubbed_segments: List[AudioSegment]) -> float:
         """Calcular offset de forma segura con análisis semántico optimizado"""
         try:
+            current_app.logger.info(f"=== CALCULATING SYNC OFFSET WITH SEMANTIC ANALYSIS ===")
+            current_app.logger.info(f"Original segments: {len(original_segments)}")
+            current_app.logger.info(f"Dubbed segments: {len(dubbed_segments)}")
+            
             if not self.sentence_transformer or not original_segments or not dubbed_segments:
+                current_app.logger.info("Falling back to simple offset calculation")
                 return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
             
             # Verificar memoria
             if not self._check_memory_usage():
+                current_app.logger.info("Insufficient memory, falling back to simple offset calculation")
                 return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
             
-            # Usar solo los primeros segmentos para reducir carga en archivos grandes
-            max_segments = min(20, len(original_segments), len(dubbed_segments))
-            orig_texts = [seg.text for seg in original_segments[:max_segments] if seg.text.strip()]
-            dub_texts = [seg.text for seg in dubbed_segments[:max_segments] if seg.text.strip()]
+            # Aumentar el número de segmentos para mejor análisis
+            max_segments = min(200, len(original_segments), len(dubbed_segments))
+            current_app.logger.info(f"Using first {max_segments} segments for analysis")
+            
+            # Seleccionar segmentos del medio de la película para mejor correspondencia
+            orig_start = len(original_segments) // 4  # Empezar desde 1/4 del video
+            dub_start = len(dubbed_segments) // 4
+            
+            orig_end = min(orig_start + max_segments, len(original_segments))
+            dub_end = min(dub_start + max_segments, len(dubbed_segments))
+            
+            current_app.logger.info(f"Original segments range: {orig_start}-{orig_end}")
+            current_app.logger.info(f"Dubbed segments range: {dub_start}-{dub_end}")
+            
+            orig_texts = [seg.text for seg in original_segments[orig_start:orig_end] if seg.text.strip()]
+            dub_texts = [seg.text for seg in dubbed_segments[dub_start:dub_end] if seg.text.strip()]
+            
+            current_app.logger.info(f"Original texts: {len(orig_texts)}")
+            current_app.logger.info(f"Dubbed texts: {len(dub_texts)}")
+            
+            # Mostrar algunos ejemplos de texto para debug
+            current_app.logger.info("=== SAMPLE ORIGINAL TEXTS ===")
+            for i, text in enumerate(orig_texts[:5]):
+                current_app.logger.info(f"Original {i}: '{text}'")
+            
+            current_app.logger.info("=== SAMPLE DUBBED TEXTS ===")
+            for i, text in enumerate(dub_texts[:5]):
+                current_app.logger.info(f"Dubbed {i}: '{text}'")
             
             if not orig_texts or not dub_texts:
+                current_app.logger.info("No valid texts found, returning 0.0 offset")
                 return 0.0
             
             # Calcular embeddings en lotes pequeños para manejar memoria
-            batch_size = 5
+            batch_size = 10  # Aumentar batch size
             best_offset = 0.0
             best_similarity = 0.0
+            best_match_info = ""
+            
+            current_app.logger.info("Starting semantic similarity analysis...")
             
             for i in range(0, len(orig_texts), batch_size):
                 orig_batch = orig_texts[i:i+batch_size]
@@ -441,14 +520,29 @@ class SyncService:
                         for di, dub_emb in enumerate(dub_embeddings):
                             similarity = np.dot(orig_emb, dub_emb) / (np.linalg.norm(orig_emb) * np.linalg.norm(dub_emb))
                             
-                            if similarity > best_similarity and similarity > 0.6:
+                            if similarity > best_similarity and similarity > 0.3:  # Bajar umbral
                                 best_similarity = similarity
-                                orig_idx = i + oi
-                                dub_idx = j + di
+                                orig_idx = orig_start + i + oi
+                                dub_idx = dub_start + j + di
                                 if orig_idx < len(original_segments) and dub_idx < len(dubbed_segments):
                                     best_offset = dubbed_segments[dub_idx].start - original_segments[orig_idx].start
+                                    best_match_info = f"Match: '{orig_texts[i+oi][:50]}...' <-> '{dub_texts[j+di][:50]}...'"
+                                    current_app.logger.info(f"New best match - Similarity: {similarity:.3f}, Offset: {best_offset:.3f}s")
+                                    current_app.logger.info(f"  Original segment {orig_idx}: {original_segments[orig_idx].start:.3f}s")
+                                    current_app.logger.info(f"  Dubbed segment {dub_idx}: {dubbed_segments[dub_idx].start:.3f}s")
+                                    current_app.logger.info(f"  Text: {best_match_info}")
             
-            current_app.logger.info(f"Calculated offset: {best_offset:.3f}s (similarity: {best_similarity:.3f})")
+            current_app.logger.info(f"=== SEMANTIC ANALYSIS COMPLETE ===")
+            current_app.logger.info(f"Best similarity: {best_similarity:.3f}")
+            current_app.logger.info(f"Calculated offset: {best_offset:.3f}s")
+            if best_match_info:
+                current_app.logger.info(f"Best match: {best_match_info}")
+            
+            # Si no encontramos buena correspondencia, usar fallback
+            if best_similarity < 0.3:
+                current_app.logger.info("Low similarity detected, using fallback offset calculation")
+                return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
+            
             return best_offset
             
         except Exception as e:
@@ -458,18 +552,56 @@ class SyncService:
     def _calculate_simple_offset_segments(self, original_segments: List[AudioSegment], 
                                         dubbed_segments: List[AudioSegment]) -> float:
         """Calcular offset simple basado en segmentos"""
+        current_app.logger.info("=== CALCULATING SIMPLE OFFSET FROM SEGMENTS ===")
+        
         if not original_segments or not dubbed_segments:
+            current_app.logger.info("No segments available, returning 0.0")
             return 0.0
-        return dubbed_segments[0].start - original_segments[0].start
+        
+        # Mostrar información de los primeros segmentos
+        current_app.logger.info("=== FIRST SEGMENTS COMPARISON ===")
+        for i in range(min(3, len(original_segments), len(dubbed_segments))):
+            orig_seg = original_segments[i]
+            dub_seg = dubbed_segments[i]
+            current_app.logger.info(f"Segment {i}:")
+            current_app.logger.info(f"  Original: {orig_seg.start:.3f}s - '{orig_seg.text[:50]}...'")
+            current_app.logger.info(f"  Dubbed:   {dub_seg.start:.3f}s - '{dub_seg.text[:50]}...'")
+            current_app.logger.info(f"  Offset:   {dub_seg.start - orig_seg.start:.3f}s")
+        
+        # Calcular offset usando múltiples segmentos para mayor precisión
+        offsets = []
+        for i in range(min(10, len(original_segments), len(dubbed_segments))):
+            offset = dubbed_segments[i].start - original_segments[i].start
+            offsets.append(offset)
+            current_app.logger.info(f"Segment {i} offset: {offset:.3f}s")
+        
+        # Usar la mediana de los offsets para mayor robustez
+        if offsets:
+            import statistics
+            median_offset = statistics.median(offsets)
+            current_app.logger.info(f"All offsets: {[f'{o:.3f}' for o in offsets]}")
+            current_app.logger.info(f"Median offset: {median_offset:.3f}s")
+            return median_offset
+        
+        # Fallback al primer segmento
+        offset = dubbed_segments[0].start - original_segments[0].start
+        current_app.logger.info(f"Simple offset calculated: {offset:.3f}s")
+        current_app.logger.info(f"Original first segment start: {original_segments[0].start:.3f}s")
+        current_app.logger.info(f"Dubbed first segment start: {dubbed_segments[0].start:.3f}s")
+        return offset
     
     def _calculate_simple_offset_from_audio(self, original_audio: str, dubbed_audio: str) -> float:
         """Calcular offset simple comparando archivos de audio"""
         try:
+            current_app.logger.info("=== CALCULATING SIMPLE OFFSET FROM AUDIO FILES ===")
+            
             # Obtener duración de ambos audios
             def get_duration(audio_path):
                 cmd = ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', audio_path]
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-                return float(result.stdout.strip()) if result.returncode == 0 else 0.0
+                duration = float(result.stdout.strip()) if result.returncode == 0 else 0.0
+                current_app.logger.info(f"Duration for {audio_path}: {duration:.3f}s")
+                return duration
             
             orig_duration = get_duration(original_audio)
             dub_duration = get_duration(dubbed_audio)
@@ -477,9 +609,11 @@ class SyncService:
             # Calcular offset basado en diferencia de duración
             offset = (dub_duration - orig_duration) / 2.0
             current_app.logger.info(f"Simple offset calculated: {offset:.3f}s")
+            current_app.logger.info(f"Duration difference: {dub_duration - orig_duration:.3f}s")
             return offset
             
-        except Exception:
+        except Exception as e:
+            current_app.logger.error(f"Error calculating simple offset: {e}")
             return 0.0
     
     def _apply_sync_offset(self, audio_path: str, offset: float, task_id: str) -> str:
@@ -488,25 +622,38 @@ class SyncService:
             temp_dir = tempfile.gettempdir()
             synced_audio_path = os.path.join(temp_dir, f"synced_{task_id}.wav")
             
+            current_app.logger.info(f"=== APPLYING SYNC OFFSET ===")
+            current_app.logger.info(f"Input audio: {audio_path}")
+            current_app.logger.info(f"Offset value: {offset:.3f}s")
+            current_app.logger.info(f"Output audio: {synced_audio_path}")
+            
             if abs(offset) < 0.1:  # Offset muy pequeño, copiar archivo
+                current_app.logger.info("Offset too small (< 0.1s), copying file without changes")
                 cmd = ['cp', audio_path, synced_audio_path]
-            elif offset > 0:  # Retrasar audio
+            elif offset > 0:  # Dubbed audio is DELAYED, need to ADVANCE it
+                current_app.logger.info(f"Positive offset detected: {offset:.3f}s - ADVANCING audio (removing delay)")
+                cmd = [
+                    'ffmpeg', '-ss', str(offset), '-i', audio_path,
+                    '-threads', '0',
+                    '-y', synced_audio_path
+                ]
+            else:  # Dubbed audio is AHEAD, need to DELAY it
+                current_app.logger.info(f"Negative offset detected: {offset:.3f}s - DELAYING audio (adding delay)")
                 cmd = [
                     'ffmpeg', '-i', audio_path,
                     '-af', f'adelay={int(abs(offset) * 1000)}|{int(abs(offset) * 1000)}',
                     '-threads', '0',
                     '-y', synced_audio_path
                 ]
-            else:  # Adelantar audio
-                cmd = [
-                    'ffmpeg', '-ss', str(abs(offset)), '-i', audio_path,
-                    '-threads', '0',
-                    '-y', synced_audio_path
-                ]
+            
+            current_app.logger.info(f"FFmpeg command: {' '.join(cmd)}")
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             if result.returncode != 0:
+                current_app.logger.error(f"FFmpeg error output: {result.stderr}")
                 raise Exception(f"Error aplicando sincronización: {result.stderr}")
+            
+            current_app.logger.info("FFmpeg command executed successfully")
             
             with self._lock:
                 self.tasks[task_id]['temp_files'].append(synced_audio_path)
@@ -514,14 +661,21 @@ class SyncService:
             return synced_audio_path
             
         except Exception as e:
+            current_app.logger.error(f"Error in _apply_sync_offset: {str(e)}")
             raise Exception(f"Error aplicando sincronización: {str(e)}")
     
     def _generate_mkv_final(self, original_video: str, original_audio: str, 
                            synced_audio: str, task_id: str) -> str:
         """Generar archivo MKV final con video original y ambas pistas de audio"""
         try:
+            current_app.logger.info(f"=== GENERATING FINAL MKV ===")
+            current_app.logger.info(f"Original video: {original_video}")
+            current_app.logger.info(f"Original audio: {original_audio}")
+            current_app.logger.info(f"Synced audio: {synced_audio}")
+            
             output_dir = current_app.config['OUTPUT_FOLDER']
             output_dir.mkdir(exist_ok=True)
+            current_app.logger.info(f"Output directory: {output_dir}")
             
             # Determinar nombre del archivo
             task = self.tasks.get(task_id, {})
@@ -535,6 +689,8 @@ class SyncService:
                 result_filename = f"synced_{task_id}.mkv"
             
             result_path = output_dir / result_filename
+            current_app.logger.info(f"Result filename: {result_filename}")
+            current_app.logger.info(f"Result path: {result_path}")
             
             # Comando FFmpeg optimizado para archivos grandes
             cmd = [
@@ -558,19 +714,27 @@ class SyncService:
                 str(result_path)
             ]
             
+            current_app.logger.info(f"FFmpeg MKV command: {' '.join(cmd)}")
+            
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)  # 1 hora timeout
             if result.returncode != 0:
+                current_app.logger.error(f"FFmpeg MKV error output: {result.stderr}")
                 raise Exception(f"Error generando MKV: {result.stderr}")
+            
+            current_app.logger.info("FFmpeg MKV command executed successfully")
             
             # Verificar que el archivo se creó correctamente
             if not result_path.exists() or result_path.stat().st_size < 1000:
+                current_app.logger.error(f"Generated MKV file is empty or corrupted: {result_path}")
                 raise Exception("El archivo MKV generado está vacío o corrupto")
             
             file_size = result_path.stat().st_size
             current_app.logger.info(f"MKV generated successfully: {result_path} ({file_size/(1024**2):.1f} MB)")
+            current_app.logger.info(f"=== MKV GENERATION COMPLETE ===")
             return str(result_path)
             
         except Exception as e:
+            current_app.logger.error(f"Error in _generate_mkv_final: {str(e)}")
             raise Exception(f"Error generando archivo MKV: {str(e)}")
     
     def _update_task_status(self, task_id: str, status: str, progress: int, message: str):
