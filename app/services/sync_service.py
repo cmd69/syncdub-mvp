@@ -337,13 +337,13 @@ class SyncService:
             audio_path = os.path.join(temp_dir, f"{prefix}_{task_id}.wav")
             current_app.logger.info(f"Output audio: {audio_path}")
             
-            # Comando FFmpeg optimizado para archivos grandes
+            # Comando FFmpeg optimizado para archivos grandes - MEJORADO para calidad
             cmd = [
                 'ffmpeg', '-i', video_path,
                 '-vn',  # Sin video
-                '-acodec', 'pcm_s16le',  # Codec de audio
-                '-ar', '16000',  # Sample rate
-                '-ac', '1',  # Mono
+                '-acodec', 'pcm_s24le',  # Codec de audio de mayor calidad (24-bit)
+                '-ar', '48000',  # Sample rate más alto para mejor calidad
+                '-ac', '2',  # Estéreo para mantener calidad original
                 '-map_metadata', '-1',  # Sin metadatos
                 '-fflags', '+bitexact',  # Reproducible
                 '-threads', '0',  # Usar todos los cores disponibles
@@ -387,11 +387,20 @@ class SyncService:
             
             current_app.logger.info(f"Starting transcription of: {audio_path}")
             
+            # Determinar si es audio original o doblado para configurar idioma
+            is_dubbed = 'dubbed' in audio_path or 'synced' in audio_path
+            
+            # Configurar idioma específico para audio doblado
+            language = 'es' if is_dubbed else None  # Forzar español para audio doblado
+            
+            current_app.logger.info(f"Audio type: {'Dubbed (Spanish)' if is_dubbed else 'Original (Auto-detect)'}")
+            current_app.logger.info(f"Language setting: {language}")
+            
             # Transcribir con configuración optimizada para archivos grandes
             result = self.whisper_model.transcribe(
                 audio_path,
                 word_timestamps=False,  # Reducir uso de memoria
-                language=None,  # Auto-detectar idioma
+                language=language,  # Usar idioma específico para doblado
                 verbose=False,
                 temperature=0.0,  # Determinístico
                 beam_size=1,  # Reducir complejidad
@@ -466,25 +475,58 @@ class SyncService:
                 current_app.logger.info("Insufficient memory, falling back to simple offset calculation")
                 return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
             
-            # Aumentar el número de segmentos para mejor análisis
+            # MEJORADO: Seleccionar segmentos más inteligentemente para evitar repeticiones
             max_segments = min(200, len(original_segments), len(dubbed_segments))
-            current_app.logger.info(f"Using first {max_segments} segments for analysis")
+            current_app.logger.info(f"Using {max_segments} segments for analysis")
             
-            # Seleccionar segmentos del medio de la película para mejor correspondencia
-            orig_start = len(original_segments) // 4  # Empezar desde 1/4 del video
-            dub_start = len(dubbed_segments) // 4
+            # Seleccionar segmentos distribuidos uniformemente en lugar de solo del medio
+            orig_indices = []
+            dub_indices = []
             
-            orig_end = min(orig_start + max_segments, len(original_segments))
-            dub_end = min(dub_start + max_segments, len(dubbed_segments))
+            # Para el audio original: seleccionar segmentos distribuidos
+            if len(original_segments) > max_segments:
+                step = len(original_segments) // max_segments
+                orig_indices = list(range(step, len(original_segments) - step, step))[:max_segments]
+            else:
+                orig_indices = list(range(len(original_segments)))
             
-            current_app.logger.info(f"Original segments range: {orig_start}-{orig_end}")
-            current_app.logger.info(f"Dubbed segments range: {dub_start}-{dub_end}")
+            # Para el audio doblado: seleccionar segmentos distribuidos
+            if len(dubbed_segments) > max_segments:
+                step = len(dubbed_segments) // max_segments
+                dub_indices = list(range(step, len(dubbed_segments) - step, step))[:max_segments]
+            else:
+                dub_indices = list(range(len(dubbed_segments)))
             
-            orig_texts = [seg.text for seg in original_segments[orig_start:orig_end] if seg.text.strip()]
-            dub_texts = [seg.text for seg in dubbed_segments[dub_start:dub_end] if seg.text.strip()]
+            current_app.logger.info(f"Original segments selected: {len(orig_indices)} (range: {min(orig_indices)}-{max(orig_indices)})")
+            current_app.logger.info(f"Dubbed segments selected: {len(dub_indices)} (range: {min(dub_indices)}-{max(dub_indices)})")
             
-            current_app.logger.info(f"Original texts: {len(orig_texts)}")
-            current_app.logger.info(f"Dubbed texts: {len(dub_texts)}")
+            # Filtrar segmentos con texto válido y no repetitivo
+            orig_texts = []
+            orig_selected_indices = []
+            seen_texts = set()
+            
+            for idx in orig_indices:
+                if idx < len(original_segments):
+                    text = original_segments[idx].text.strip()
+                    if text and len(text) > 3 and text not in seen_texts:  # Evitar textos muy cortos y repetidos
+                        orig_texts.append(text)
+                        orig_selected_indices.append(idx)
+                        seen_texts.add(text)
+            
+            dub_texts = []
+            dub_selected_indices = []
+            seen_texts = set()
+            
+            for idx in dub_indices:
+                if idx < len(dubbed_segments):
+                    text = dubbed_segments[idx].text.strip()
+                    if text and len(text) > 3 and text not in seen_texts:  # Evitar textos muy cortos y repetidos
+                        dub_texts.append(text)
+                        dub_selected_indices.append(idx)
+                        seen_texts.add(text)
+            
+            current_app.logger.info(f"Original unique texts: {len(orig_texts)}")
+            current_app.logger.info(f"Dubbed unique texts: {len(dub_texts)}")
             
             # Mostrar algunos ejemplos de texto para debug
             current_app.logger.info("=== SAMPLE ORIGINAL TEXTS ===")
@@ -500,7 +542,7 @@ class SyncService:
                 return 0.0
             
             # Calcular embeddings en lotes pequeños para manejar memoria
-            batch_size = 10  # Aumentar batch size
+            batch_size = 10
             best_offset = 0.0
             best_similarity = 0.0
             best_match_info = ""
@@ -522,8 +564,8 @@ class SyncService:
                             
                             if similarity > best_similarity and similarity > 0.3:  # Bajar umbral
                                 best_similarity = similarity
-                                orig_idx = orig_start + i + oi
-                                dub_idx = dub_start + j + di
+                                orig_idx = orig_selected_indices[i + oi]
+                                dub_idx = dub_selected_indices[j + di]
                                 if orig_idx < len(original_segments) and dub_idx < len(dubbed_segments):
                                     best_offset = dubbed_segments[dub_idx].start - original_segments[orig_idx].start
                                     best_match_info = f"Match: '{orig_texts[i+oi][:50]}...' <-> '{dub_texts[j+di][:50]}...'"
@@ -692,7 +734,7 @@ class SyncService:
             current_app.logger.info(f"Result filename: {result_filename}")
             current_app.logger.info(f"Result path: {result_path}")
             
-            # Comando FFmpeg optimizado para archivos grandes
+            # MEJORADO: Comando FFmpeg optimizado para conservar calidad original del audio
             cmd = [
                 'ffmpeg',
                 '-i', original_video,    # Video original
@@ -702,8 +744,8 @@ class SyncService:
                 '-map', '1:a',           # Audio original
                 '-map', '2:a',           # Audio sincronizado
                 '-c:v', 'copy',          # Copiar video sin recodificar
-                '-c:a', 'aac',           # Codec de audio
-                '-b:a', '192k',          # Bitrate de audio más alto para calidad
+                '-c:a:0', 'copy',        # Copiar audio original sin recodificar (conservar calidad)
+                '-c:a:1', 'copy',        # Copiar audio sincronizado sin recodificar (conservar calidad)
                 '-metadata:s:a:0', 'title=Original',
                 '-metadata:s:a:0', 'language=eng',
                 '-metadata:s:a:1', 'title=Doblado',
