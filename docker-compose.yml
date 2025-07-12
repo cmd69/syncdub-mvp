@@ -75,16 +75,27 @@ services:
       - MKL_NUM_THREADS=${MKL_NUM_THREADS:-2}
       - NUMEXPR_MAX_THREADS=${NUMEXPR_MAX_THREADS:-2}
       
-      # GPU
+      # GPU - Configuración optimizada para NVIDIA 1060 6GB
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
-      - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+      - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-compute,utility,graphics}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - CUDA_DEVICE_ORDER=PCI_BUS_ID
 
-    # Solo usar runtime nvidia si está disponible
-    runtime: ${DOCKER_RUNTIME:-runc}
+    # Configuración GPU optimizada para NVIDIA 1060 6GB
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          memory: ${RESERVED_MEMORY:-2G}
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: 1
+              options:
+                memory: 6GB
 
-    # Límites de recursos
+    # Límites de recursos (sin mem_reservation para evitar conflicto)
     mem_limit: ${MAX_MEMORY:-8G}
-    mem_reservation: ${RESERVED_MEMORY:-2G}
     memswap_limit: ${MAX_MEMORY:-8G}
     oom_kill_disable: false
 
