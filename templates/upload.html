@@ -6,81 +6,95 @@
 <div class="container mt-4">
     <div class="row">
         <div class="col-12">
-            <h2><i class="fas fa-upload"></i> Subir Videos para Sincronización</h2>
-            <p class="text-muted">Selecciona los videos original y doblado para sincronizar el audio.</p>
-        </div>
-    </div>
-
-    <!-- Selector de Modo -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Seleccionar Modo de Carga</h5>
-                    <div class="btn-group w-100" role="group">
-                        <input type="radio" class="btn-check" name="uploadMode" id="modeLocal" value="local" checked>
-                        <label class="btn btn-outline-primary" for="modeLocal">
-                            <i class="fas fa-upload"></i> Subir Archivos Locales
-                        </label>
-                        
-                        <input type="radio" class="btn-check" name="uploadMode" id="modeServer" value="server">
-                        <label class="btn btn-outline-success" for="modeServer">
-                            <i class="fas fa-server"></i> Desde Servidor NFS
-                        </label>
+            {% set mode = request.args.get('mode', 'sync') %}
+            <!-- Selector de Modo (siempre visible) -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Seleccionar Modo de Carga</h5>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="uploadMode" id="modeServer" value="server" checked>
+                                <label class="btn btn-outline-success" for="modeServer">
+                                    <i class="fas fa-server"></i> Desde Servidor NFS
+                                </label>
+                                <input type="radio" class="btn-check" name="uploadMode" id="modeLocal" value="local">
+                                <label class="btn btn-outline-primary" for="modeLocal">
+                                    <i class="fas fa-upload"></i> Subir Archivos Locales
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- Modo Local (Original) -->
-    <div id="localMode" class="upload-mode">
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-body">
-                        <form id="uploadForm" enctype="multipart/form-data">
+            <!-- Modo Local -->
+            <div id="localMode" class="upload-mode">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                {% if mode == 'convert' %}
+                                    <i class="fas fa-exchange-alt"></i> Convertir video a H265
+                                {% else %}
+                                    <i class="fas fa-upload"></i> Subir Videos para Sincronización
+                                {% endif %}
+                            </h5>
                             <div class="row">
-                                <div class="col-md-6">
+                                <div class="col-md-12">
                                     <div class="mb-3">
-                                        <label for="originalVideo" class="form-label">Video Original</label>
+                                        <label for="originalVideo" class="form-label">
+                                            {% if mode == 'convert' %}
+                                                Video a convertir
+                                            {% else %}
+                                                Video Original
+                                            {% endif %}
+                                        </label>
                                         <input type="file" class="form-control" id="originalVideo" name="original_video" accept="video/*" required>
-                                        <div class="form-text">Selecciona el video con audio original</div>
+                                        <div class="form-text">
+                                            {% if mode == 'convert' %}
+                                                Selecciona el video que deseas convertir a H265
+                                            {% else %}
+                                                Selecciona el video con audio original
+                                            {% endif %}
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6">
+                                {% if mode != 'convert' %}
+                                <div class="col-md-12">
                                     <div class="mb-3">
                                         <label for="dubbedVideo" class="form-label">Video Doblado</label>
                                         <input type="file" class="form-control" id="dubbedVideo" name="dubbed_video" accept="video/*" required>
                                         <div class="form-text">Selecciona el video con audio doblado</div>
                                     </div>
                                 </div>
+                                {% endif %}
                             </div>
-                            
                             <div class="mb-3">
                                 <label for="outputName" class="form-label">Nombre del archivo de salida (opcional)</label>
-                                <input type="text" class="form-control" id="outputName" name="output_name" placeholder="Ej: mi_pelicula_sincronizada">
+                                <input type="text" class="form-control" id="outputName" name="output_name" placeholder="Ej: mi_pelicula_salida">
                                 <div class="form-text">Si no se especifica, se generará automáticamente</div>
                             </div>
-                            
                             <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="fas fa-sync-alt"></i> Sincronizar Videos
+                                {% if mode == 'convert' %}
+                                    <i class="fas fa-exchange-alt"></i> Convertir a H265
+                                {% else %}
+                                    <i class="fas fa-sync-alt"></i> Sincronizar Videos
+                                {% endif %}
                             </button>
-                        </form>
+                        </div>
                     </div>
-                </div>
+                </form>
             </div>
-        </div>
-    </div>
-
-    <!-- Modo Servidor NFS -->
-    <div id="serverMode" class="upload-mode" style="display: none;">
-        <div class="row">
-            <div class="col-12">
+            <!-- Modo Servidor NFS -->
+            <div id="serverMode" class="upload-mode" style="display: none;">
                 <div class="card">
                     <div class="card-header">
                         <h5 class="mb-0">
-                            <i class="fas fa-server"></i> Navegador de Archivos del Servidor
+                            {% if mode == 'convert' %}
+                                <i class="fas fa-exchange-alt"></i> Selecciona video a convertir desde NFS
+                            {% else %}
+                                <i class="fas fa-server"></i> Navegador de Archivos del Servidor
+                            {% endif %}
                             <span id="nfsStatus" class="badge bg-secondary ms-2">Verificando...</span>
                         </h5>
                     </div>
@@ -90,7 +104,6 @@
                             <strong>Servidor NFS:</strong> <span id="serverPath"></span><br>
                             <strong>Videos disponibles:</strong> <span id="serverVideos"></span>
                         </div>
-
                         <!-- Navegación -->
                         <div id="navigationArea" style="display: none;">
                             <!-- Breadcrumb -->
@@ -99,7 +112,6 @@
                                     <li class="breadcrumb-item active">video_source</li>
                                 </ol>
                             </nav>
-
                             <!-- Controles -->
                             <div class="mb-3">
                                 <button id="btnBack" class="btn btn-secondary btn-sm" disabled>
@@ -109,7 +121,6 @@
                                     <i class="fas fa-sync-alt"></i> Actualizar
                                 </button>
                             </div>
-
                             <!-- Lista de archivos -->
                             <div id="fileList" class="border rounded p-3" style="max-height: 400px; overflow-y: auto;">
                                 <div class="text-center">
@@ -120,22 +131,34 @@
                                 </div>
                             </div>
                         </div>
-
                         <!-- Selección de archivos -->
                         <div id="selectionArea" style="display: none;">
-                            <h6 class="mt-4">Archivos Seleccionados:</h6>
+                            <h6 class="mt-4">
+                                {% if mode == 'convert' %}
+                                    Archivo seleccionado para conversión:
+                                {% else %}
+                                    Archivos Seleccionados:
+                                {% endif %}
+                            </h6>
                             <div class="row">
-                                <div class="col-md-6">
+                                <div class="col-md-12">
                                     <div class="card">
                                         <div class="card-body">
-                                            <h6 class="card-title text-primary">Video Original</h6>
+                                            <h6 class="card-title text-primary">
+                                                {% if mode == 'convert' %}
+                                                    Video a convertir
+                                                {% else %}
+                                                    Video Original
+                                                {% endif %}
+                                            </h6>
                                             <div id="selectedOriginal" class="text-muted">
                                                 <i class="fas fa-film"></i> Ningún archivo seleccionado
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6">
+                                {% if mode != 'convert' %}
+                                <div class="col-md-12">
                                     <div class="card">
                                         <div class="card-body">
                                             <h6 class="card-title text-success">Video Doblado</h6>
@@ -145,22 +168,24 @@
                                         </div>
                                     </div>
                                 </div>
+                                {% endif %}
                             </div>
-
                             <!-- Nombre de salida -->
                             <div class="mt-3">
                                 <label for="serverOutputName" class="form-label">Nombre del archivo de salida (opcional)</label>
-                                <input type="text" class="form-control" id="serverOutputName" placeholder="Ej: mi_pelicula_sincronizada">
+                                <input type="text" class="form-control" id="serverOutputName" placeholder="Ej: mi_pelicula_salida">
                             </div>
-
                             <!-- Botón de procesamiento -->
                             <div class="mt-3">
                                 <button id="btnProcessServer" class="btn btn-success btn-lg" disabled>
-                                    <i class="fas fa-sync-alt"></i> Sincronizar Videos del Servidor
+                                    {% if mode == 'convert' %}
+                                        <i class="fas fa-exchange-alt"></i> Convertir a H265
+                                    {% else %}
+                                        <i class="fas fa-sync-alt"></i> Sincronizar Videos del Servidor
+                                    {% endif %}
                                 </button>
                             </div>
                         </div>
-
                         <!-- Error del servidor -->
                         <div id="serverError" class="alert alert-danger" style="display: none;">
                             <strong>Error:</strong> <span id="serverErrorMessage"></span>
@@ -168,33 +193,31 @@
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- Área de progreso -->
-    <div id="progressArea" class="mt-4" style="display: none;">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Procesando Videos</h5>
-                <div class="progress mb-3">
-                    <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+            <!-- Área de progreso -->
+            <div id="progressArea" class="mt-4" style="display: none;">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Procesando Videos</h5>
+                        <div class="progress mb-3">
+                            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div id="progressText" class="text-center">Iniciando procesamiento...</div>
+                    </div>
                 </div>
-                <div id="progressText" class="text-center">Iniciando procesamiento...</div>
             </div>
-        </div>
-    </div>
-
-    <!-- Área de resultados -->
-    <div id="resultArea" class="mt-4" style="display: none;">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title text-success">
-                    <i class="fas fa-check-circle"></i> Procesamiento Completado
-                </h5>
-                <p>Tu video sincronizado está listo para descargar.</p>
-                <a id="downloadLink" href="#" class="btn btn-success btn-lg">
-                    <i class="fas fa-download"></i> Descargar Video Sincronizado
-                </a>
+            <!-- Área de resultados -->
+            <div id="resultArea" class="mt-4" style="display: none;">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title text-success">
+                            <i class="fas fa-check-circle"></i> Procesamiento Completado
+                        </h5>
+                        <p>Tu video procesado está listo para descargar.</p>
+                        <a id="downloadLink" href="#" class="btn btn-success btn-lg">
+                            <i class="fas fa-download"></i> Descargar Video
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

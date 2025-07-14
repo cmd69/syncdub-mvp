@@ -16,6 +16,10 @@ from flask import current_app
 import numpy as np
 from typing import List, Tuple, Dict, Optional
 from datetime import datetime
+import shutil
+
+# Importar el nuevo servicio de transcripción
+from .transcription_service import TranscriptionService
 
 class AudioSegment:
     """Representa un segmento de audio transcrito"""
@@ -45,6 +49,9 @@ class SyncService:
         # Configuración de recursos
         self.max_memory_usage = 0.85  # 85% de memoria máxima
         self.chunk_size = 60  # Procesar audio en chunks de 60 segundos para archivos grandes
+        
+        # Servicio de transcripción optimizado
+        self.transcription_service = TranscriptionService()
     
     def set_app(self, app):
         """Establecer la instancia de la aplicación Flask"""
@@ -159,10 +166,25 @@ class SyncService:
                 
                 # Configurar dispositivo para sentence transformer
                 device_st = "cuda" if torch.cuda.is_available() else "cpu"
+                current_app.logger.info(f"CUDA available: {torch.cuda.is_available()}")
+                current_app.logger.info(f"CUDA device count: {torch.cuda.device_count()}")
+                current_app.logger.info(f"Loading Sentence Transformer on device: {device_st}")
+                
                 self.sentence_transformer = SentenceTransformer(st_model_name, device=device_st)
-                if self.app:
-                    with self.app.app_context():
-                        current_app.logger.info(f"Sentence Transformer loaded successfully on {device_st}")
+                
+                # Verificar que el modelo esté en el dispositivo correcto
+                actual_device = str(self.sentence_transformer.device)
+                current_app.logger.info(f"Sentence Transformer loaded successfully on {actual_device}")
+                
+                # Verificar que realmente esté en GPU si CUDA está disponible
+                if torch.cuda.is_available() and 'cpu' in actual_device:
+                    current_app.logger.warning("⚠️  Sentence Transformer loaded on CPU despite CUDA being available")
+                    current_app.logger.warning("Attempting to move model to GPU manually...")
+                    self.sentence_transformer = self.sentence_transformer.to('cuda')
+                    current_app.logger.info(f"Model moved to: {self.sentence_transformer.device}")
+                elif torch.cuda.is_available() and 'cuda' in actual_device:
+                    current_app.logger.info("✅ Sentence Transformer successfully loaded on GPU")
+                    
             except Exception as e:
                 if self.app:
                     with self.app.app_context():
@@ -186,16 +208,58 @@ class SyncService:
     
     def start_sync_task(self, task_id: str, original_path: str, dubbed_path: str, 
                        custom_filename: str = '', custom_name: str = '', source_type: str = 'local'):
-        """Iniciar tarea de sincronización de forma asíncrona
-        
-        CORREGIDO: Acepta tanto custom_filename como custom_name para compatibilidad
-        """
+        """Iniciar tarea de sincronización de forma asíncrona"""
         # Usar custom_name si se proporciona, sino usar custom_filename
         final_custom_name = custom_name if custom_name else custom_filename
-        
+        # Generar sufijo de fecha y hora
+        from datetime import datetime
+        now = datetime.now().strftime('%y%m%d_%H%M')
+        # Nombre archivo final sin extensión
+        base_name = final_custom_name or f"synced_{task_id}"
+        if base_name.lower().endswith('.mkv'):
+            base_name = base_name[:-4]
+        task_name = f"{base_name}_{now}"
+        # Obtener info de archivos
+        def get_file_info(path):
+            import subprocess, os
+            info = {'path': path, 'size': 0, 'duration': 0, 'audio_streams': [], 'video_streams': []}
+            if not os.path.exists(path):
+                return info
+            info['size'] = os.path.getsize(path)
+            # ffprobe para duración y streams
+            try:
+                cmd = [
+                    'ffprobe', '-v', 'error', '-show_entries',
+                    'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', path
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                info['duration'] = float(result.stdout.strip()) if result.returncode == 0 else 0
+                # Streams
+                cmd2 = [
+                    'ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries',
+                    'stream=index,codec_name,channels,sample_rate,bit_rate', '-of', 'json', path
+                ]
+                result2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=10)
+                import json
+                streams = json.loads(result2.stdout).get('streams', [])
+                info['audio_streams'] = streams
+                # Video info
+                cmd3 = [
+                    'ffprobe', '-v', 'error', '-select_streams', 'v', '-show_entries',
+                    'stream=index,codec_name,width,height,bit_rate', '-of', 'json', path
+                ]
+                result3 = subprocess.run(cmd3, capture_output=True, text=True, timeout=10)
+                vstreams = json.loads(result3.stdout).get('streams', [])
+                info['video_streams'] = vstreams
+            except Exception:
+                pass
+            return info
+        orig_info = get_file_info(original_path)
+        dub_info = get_file_info(dubbed_path)
         with self._lock:
             self.tasks[task_id] = {
                 'id': task_id,
+                'name': task_name,
                 'status': 'processing',
                 'progress': 0,
                 'message': 'Iniciando procesamiento...',
@@ -207,9 +271,10 @@ class SyncService:
                 'result_path': None,
                 'created_at': datetime.now().isoformat(),
                 'error': None,
-                'temp_files': []
+                'temp_files': [],
+                'original_info': orig_info,
+                'dubbed_info': dub_info
             }
-        
         # Ejecutar en hilo separado con contexto de aplicación
         thread = threading.Thread(target=self._process_with_context, args=(task_id,))
         thread.daemon = True
@@ -228,97 +293,108 @@ class SyncService:
         """Procesamiento optimizado de sincronización de audio para archivos grandes"""
         try:
             current_app.logger.info(f"=== STARTING SYNC TASK: {task_id} ===")
-            
-            # Verificar archivos de entrada
             self._update_task_status(task_id, 'processing', 5, "Verificando archivos de entrada...")
             task = self.tasks[task_id]
             original_path = task['original_path']
             dubbed_path = task['dubbed_path']
-            
-            current_app.logger.info(f"Original video path: {original_path}")
-            current_app.logger.info(f"Dubbed video path: {dubbed_path}")
-            
-            if not os.path.exists(original_path):
-                raise Exception(f"Archivo original no encontrado: {original_path}")
-            if not os.path.exists(dubbed_path):
-                raise Exception(f"Archivo doblado no encontrado: {dubbed_path}")
-            
-            # Verificar tamaño de archivos (máximo 20GB)
-            max_size = 20 * 1024 * 1024 * 1024  # 20GB
-            orig_size = os.path.getsize(original_path)
-            dub_size = os.path.getsize(dubbed_path)
-            
-            if orig_size > max_size or dub_size > max_size:
-                raise Exception(f"Archivo demasiado grande. Máximo permitido: 20GB")
-            
-            current_app.logger.info(f"File sizes - Original: {orig_size/(1024**3):.2f}GB, Dubbed: {dub_size/(1024**3):.2f}GB")
-            
-            # Verificar memoria disponible
-            if not self._check_memory_usage():
-                self._cleanup_memory()
-            
+            custom_filename = task.get('custom_filename', '') or task.get('custom_name', '')
+
+            # Crear carpeta de salida única para la tarea
+            output_dir = current_app.config['OUTPUT_FOLDER'] / (custom_filename or f"synced_{task_id}")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            current_app.logger.info(f"Output directory for task: {output_dir}")
+
             # Extraer audio de ambos videos
             self._update_task_status(task_id, 'processing', 15, "Extrayendo audio del video original...")
             current_app.logger.info("Extracting audio from original video...")
             original_audio = self._extract_audio_optimized(original_path, task_id, "original")
             current_app.logger.info(f"Original audio extracted: {original_audio}")
-            
+            shutil.copy2(original_audio, output_dir / "original_audio.wav")
+
             self._update_task_status(task_id, 'processing', 25, "Extrayendo audio del video doblado...")
             current_app.logger.info("Extracting audio from dubbed video...")
             dubbed_audio = self._extract_audio_optimized(dubbed_path, task_id, "dubbed")
             current_app.logger.info(f"Dubbed audio extracted: {dubbed_audio}")
-            
+            shutil.copy2(dubbed_audio, output_dir / "dubbed_audio.wav")
+
             # Cargar modelos IA de forma segura
             self._update_task_status(task_id, 'processing', 35, "Preparando modelos de IA...")
             current_app.logger.info("Loading AI models...")
             ai_available = self._load_ai_models_safe()
             current_app.logger.info(f"AI models available: {ai_available}")
-            
+
             if ai_available:
-                # Transcribir audios con IA
-                self._update_task_status(task_id, 'processing', 45, "Transcribiendo audio original...")
-                current_app.logger.info("Transcribing original audio with AI...")
-                original_segments = self._transcribe_audio_safe(original_audio, task_id)
-                current_app.logger.info(f"Original segments: {len(original_segments)}")
-                
-                self._update_task_status(task_id, 'processing', 60, "Transcribiendo audio doblado...")
-                current_app.logger.info("Transcribing dubbed audio with AI...")
-                dubbed_segments = self._transcribe_audio_safe(dubbed_audio, task_id)
-                current_app.logger.info(f"Dubbed segments: {len(dubbed_segments)}")
-                
-                # Calcular offset con análisis semántico
+                # Transcribir ambos audios a español y a inglés
+                self._update_task_status(task_id, 'processing', 45, "Transcribiendo audio original a ES...")
+                current_app.logger.info("Transcribing original audio to ES...")
+                orig_es = self.transcription_service.transcribe_audio(original_audio, task_id=task_id, test_mode=False)
+                if orig_es:
+                    with open(output_dir / "original_es.json", "w", encoding="utf-8") as f:
+                        json.dump(orig_es, f, ensure_ascii=False, indent=2)
+
+                self._update_task_status(task_id, 'processing', 47, "Transcribiendo audio original a EN...")
+                current_app.logger.info("Transcribing original audio to EN...")
+                prev_lang = current_app.config.get('TRANSCRIPTION_LANGUAGE', 'es')
+                current_app.config['TRANSCRIPTION_LANGUAGE'] = 'en'
+                orig_en = self.transcription_service.transcribe_audio(original_audio, task_id=task_id, test_mode=False)
+                current_app.config['TRANSCRIPTION_LANGUAGE'] = prev_lang
+                if orig_en:
+                    with open(output_dir / "original_en.json", "w", encoding="utf-8") as f:
+                        json.dump(orig_en, f, ensure_ascii=False, indent=2)
+
+                self._update_task_status(task_id, 'processing', 60, "Transcribiendo audio doblado a ES...")
+                current_app.logger.info("Transcribing dubbed audio to ES...")
+                dub_es = self.transcription_service.transcribe_audio(dubbed_audio, task_id=task_id, test_mode=False)
+                if dub_es:
+                    with open(output_dir / "dubbed_es.json", "w", encoding="utf-8") as f:
+                        json.dump(dub_es, f, ensure_ascii=False, indent=2)
+
+                self._update_task_status(task_id, 'processing', 62, "Transcribiendo audio doblado a EN...")
+                current_app.logger.info("Transcribing dubbed audio to EN...")
+                current_app.config['TRANSCRIPTION_LANGUAGE'] = 'en'
+                dub_en = self.transcription_service.transcribe_audio(dubbed_audio, task_id=task_id, test_mode=False)
+                current_app.config['TRANSCRIPTION_LANGUAGE'] = prev_lang
+                if dub_en:
+                    with open(output_dir / "dubbed_en.json", "w", encoding="utf-8") as f:
+                        json.dump(dub_en, f, ensure_ascii=False, indent=2)
+
+                # Calcular offset usando los segmentos en español
                 self._update_task_status(task_id, 'processing', 75, "Calculando sincronización...")
                 current_app.logger.info("Calculating sync offset with semantic analysis...")
-                time_offset = self._calculate_sync_offset_safe(original_segments, dubbed_segments)
+                orig_segments = [AudioSegment(s['start'], s['end'], s['text']) for s in (orig_es['segments'] if orig_es else [])]
+                dub_segments = [AudioSegment(s['start'], s['end'], s['text']) for s in (dub_es['segments'] if dub_es else [])]
+                time_offset = self._calculate_sync_offset_safe(orig_segments, dub_segments)
             else:
                 # Modo fallback sin IA
                 self._update_task_status(task_id, 'processing', 60, "Usando modo de compatibilidad...")
                 current_app.logger.info("Using fallback mode without AI...")
                 time_offset = self._calculate_simple_offset_from_audio(original_audio, dubbed_audio)
-            
+
             current_app.logger.info(f"=== CALCULATED TIME OFFSET: {time_offset:.3f} seconds ===")
-            
+
             # Aplicar sincronización
             self._update_task_status(task_id, 'processing', 85, "Aplicando sincronización...")
             current_app.logger.info(f"Applying sync offset: {time_offset:.3f}s")
             synced_audio = self._apply_sync_offset(dubbed_audio, time_offset, task_id)
             current_app.logger.info(f"Synced audio created: {synced_audio}")
-            
+            shutil.copy2(synced_audio, output_dir / "dubbed_audio_synced.wav")
+
             # Generar archivo MKV final
             self._update_task_status(task_id, 'processing', 95, "Generando archivo MKV final...")
             current_app.logger.info("Generating final MKV file...")
             result_path = self._generate_mkv_final(original_path, original_audio, synced_audio, task_id)
             current_app.logger.info(f"Final MKV generated: {result_path}")
-            
+            shutil.copy2(result_path, output_dir / (custom_filename or f"synced_{task_id}.mkv"))
+
             # Completar tarea
             with self._lock:
-                self.tasks[task_id]['result_path'] = result_path
+                self.tasks[task_id]['result_path'] = str(output_dir / (custom_filename or f"synced_{task_id}.mkv"))
                 self.tasks[task_id]['status'] = 'completed'
                 self.tasks[task_id]['progress'] = 100
                 self.tasks[task_id]['message'] = '¡Sincronización completada exitosamente!'
-            
+
             current_app.logger.info(f"=== TASK COMPLETED SUCCESSFULLY: {task_id} ===")
-            
+
         except Exception as e:
             current_app.logger.error(f"=== ERROR PROCESSING TASK {task_id}: {str(e)} ===")
             self._update_task_error(task_id, f"Error en el procesamiento: {str(e)}")
@@ -375,66 +451,135 @@ class SyncService:
             raise Exception(f"Error extrayendo audio: {str(e)}")
     
     def _transcribe_audio_safe(self, audio_path: str, task_id: str) -> List[AudioSegment]:
-        """Transcribir audio de forma segura con manejo de memoria y archivos grandes"""
+        """Transcribir audio usando el servicio de transcripción optimizado"""
         try:
-            if not self.whisper_model:
+            current_app.logger.info(f"Starting optimized transcription of: {audio_path}")
+            
+            # Usar el nuevo servicio de transcripción optimizado
+            result = self.transcription_service.transcribe_audio(audio_path, task_id=task_id)
+            
+            if result is None:
+                current_app.logger.warning("Optimized transcription failed, using fallback")
                 return self._create_fallback_segments(audio_path)
             
-            # Verificar memoria antes de transcribir
-            if not self._check_memory_usage():
-                current_app.logger.warning("Insufficient memory for transcription, using fallback")
+            segments = result.get('segments', [])
+            if not segments:
+                current_app.logger.warning("No segments found in optimized transcription")
                 return self._create_fallback_segments(audio_path)
             
-            current_app.logger.info(f"Starting transcription of: {audio_path}")
-            
-            # Determinar si es audio original o doblado para configurar idioma
-            is_dubbed = 'dubbed' in audio_path or 'synced' in audio_path
-            
-            # Configurar idioma específico para audio doblado
-            language = 'es' if is_dubbed else None  # Forzar español para audio doblado
-            
-            current_app.logger.info(f"Audio type: {'Dubbed (Spanish)' if is_dubbed else 'Original (Auto-detect)'}")
-            current_app.logger.info(f"Language setting: {language}")
-            
-            # Transcribir con configuración optimizada para archivos grandes
-            result = self.whisper_model.transcribe(
-                audio_path,
-                word_timestamps=False,  # Reducir uso de memoria
-                language=language,  # Usar idioma específico para doblado
-                verbose=False,
-                temperature=0.0,  # Determinístico
-                beam_size=1,  # Reducir complejidad
-                best_of=1,  # Reducir complejidad
-                patience=1.0
-            )
-            
-            # Mostrar información de la transcripción
-            detected_language = result.get('language', 'unknown')
-            current_app.logger.info(f"Detected language: {detected_language}")
-            
-            segments = []
-            for segment in result.get('segments', []):
+            # Convertir a AudioSegment
+            audio_segments = []
+            for segment in segments:
                 audio_segment = AudioSegment(
                     start=segment['start'],
                     end=segment['end'],
                     text=segment['text'],
-                    confidence=1.0
+                    confidence=segment.get('avg_logprob', 1.0)
                 )
-                segments.append(audio_segment)
+                audio_segments.append(audio_segment)
             
-            current_app.logger.info(f"Transcribed {len(segments)} segments")
+            current_app.logger.info(f"Optimized transcription completed: {len(audio_segments)} segments")
+            current_app.logger.info(f"Total duration: {result.get('total_duration', 0):.1f}s")
+            current_app.logger.info(f"Average segment duration: {result.get('avg_duration', 0):.1f}s")
+            current_app.logger.info(f"Total words: {result.get('total_words', 0)}")
+            current_app.logger.info(f"Transcription time: {result.get('transcribe_time', 0):.1f}s")
+            
+            # Guardar transcripción permanentemente
+            self._save_transcription_permanently(result, task_id, audio_path)
             
             # Mostrar algunos ejemplos de transcripción
-            if segments:
-                current_app.logger.info("=== SAMPLE TRANSCRIPTIONS ===")
-                for i, seg in enumerate(segments[:3]):
+            if audio_segments:
+                current_app.logger.info("=== SAMPLE TRANSCRIPTIONS (OPTIMIZED) ===")
+                for i, seg in enumerate(audio_segments[:3]):
                     current_app.logger.info(f"Segment {i} ({seg.start:.1f}s-{seg.end:.1f}s): '{seg.text}'")
             
-            return segments
+            return audio_segments
             
         except Exception as e:
-            current_app.logger.warning(f"Transcription failed: {e}, using fallback")
+            current_app.logger.warning(f"Optimized transcription failed: {e}, using fallback")
             return self._create_fallback_segments(audio_path)
+    
+    def _save_transcription_permanently(self, result: Dict, task_id: str, audio_path: str):
+        """Guardar transcripción permanentemente en /tmp para revisión manual"""
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            transcription_dir = f"/tmp/transcriptions_{timestamp}_{task_id}"
+            
+            os.makedirs(transcription_dir, exist_ok=True)
+            current_app.logger.info(f"Saving permanent transcription to: {transcription_dir}")
+            
+            # Guardar resultado completo
+            result_file = os.path.join(transcription_dir, "transcription_result.json")
+            with open(result_file, 'w', encoding='utf-8') as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
+            
+            # Guardar solo segmentos
+            segments_file = os.path.join(transcription_dir, "segments.json")
+            with open(segments_file, 'w', encoding='utf-8') as f:
+                json.dump(result.get('segments', []), f, ensure_ascii=False, indent=2)
+            
+            # Crear archivo de resumen
+            summary_file = os.path.join(transcription_dir, "summary.txt")
+            with open(summary_file, 'w', encoding='utf-8') as f:
+                f.write(f"TRANSCRIPTION SUMMARY\n")
+                f.write(f"====================\n")
+                f.write(f"Task ID: {task_id}\n")
+                f.write(f"Audio file: {os.path.basename(audio_path)}\n")
+                f.write(f"Model: {result.get('model', 'N/A')}\n")
+                f.write(f"Total segments: {len(result.get('segments', []))}\n")
+                f.write(f"Total duration: {result.get('total_duration', 0):.1f}s\n")
+                f.write(f"Transcription time: {result.get('transcribe_time', 0):.1f}s\n")
+                f.write(f"Test mode: {result.get('test_mode', 'N/A')}\n")
+                f.write(f"\nFIRST 5 SEGMENTS:\n")
+                for i, segment in enumerate(result.get('segments', [])[:5], 1):
+                    f.write(f"{i}. [{segment['start']:.1f}-{segment['end']:.1f}] {segment['text']}\n")
+            
+            current_app.logger.info(f"Permanent transcription saved to: {transcription_dir}")
+            
+            # Agregar a la lista de archivos temporales para preservación
+            with self._lock:
+                if task_id in self.tasks:
+                    if 'transcription_files' not in self.tasks[task_id]:
+                        self.tasks[task_id]['transcription_files'] = []
+                    self.tasks[task_id]['transcription_files'].append(transcription_dir)
+            
+        except Exception as e:
+            current_app.logger.error(f"Error saving permanent transcription: {e}")
+    
+    def _clean_transcript_segments(self, segments: List[Dict]) -> List[Dict]:
+        """Limpiar segmentos duplicados y muy cortos de la transcripción"""
+        cleaned = []
+        seen_texts = set()
+        
+        for segment in segments:
+            text = segment['text'].strip()
+            
+            # Filtrar segmentos muy cortos (menos de 2 caracteres)
+            if len(text) < 2:
+                continue
+                
+            # Filtrar duplicados consecutivos
+            if text in seen_texts:
+                continue
+                
+            # Filtrar segmentos muy cortos temporalmente (menos de 1 segundo)
+            duration = segment['end'] - segment['start']
+            if duration < 1.0:
+                continue
+                
+            # Filtrar texto que parece ser ruido o repetición
+            noise_patterns = ['David!', 'What?', 'No.', 'Yeah.', 'Hey, Mom.', '¡David!', '¿Qué?', 'No.', 'Sí.']
+            if text in noise_patterns and len(cleaned) > 0:
+                # Solo agregar si no es una repetición inmediata
+                last_text = cleaned[-1]['text'].strip()
+                if text != last_text:
+                    cleaned.append(segment)
+                    seen_texts.add(text)
+            else:
+                cleaned.append(segment)
+                seen_texts.add(text)
+        
+        return cleaned
     
     def _create_fallback_segments(self, audio_path: str) -> List[AudioSegment]:
         """Crear segmentos simulados cuando la IA no está disponible"""
@@ -462,7 +607,7 @@ class SyncService:
                                    dubbed_segments: List[AudioSegment]) -> float:
         """Calcular offset de forma segura con análisis semántico optimizado"""
         try:
-            current_app.logger.info(f"=== CALCULATING SYNC OFFSET WITH SEMANTIC ANALYSIS ===")
+            current_app.logger.info(f"=== CALCULATING SYNC OFFSET ===")
             current_app.logger.info(f"Original segments: {len(original_segments)}")
             current_app.logger.info(f"Dubbed segments: {len(dubbed_segments)}")
             
@@ -475,32 +620,27 @@ class SyncService:
                 current_app.logger.info("Insufficient memory, falling back to simple offset calculation")
                 return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
             
-            # MEJORADO: Seleccionar segmentos más inteligentemente para evitar repeticiones
-            max_segments = min(200, len(original_segments), len(dubbed_segments))
+            # MEJORADO: Usar menos segmentos para evitar sobrecarga
+            max_segments = min(50, len(original_segments), len(dubbed_segments))
             current_app.logger.info(f"Using {max_segments} segments for analysis")
             
-            # Seleccionar segmentos distribuidos uniformemente en lugar de solo del medio
+            # Seleccionar segmentos distribuidos uniformemente
             orig_indices = []
             dub_indices = []
             
-            # Para el audio original: seleccionar segmentos distribuidos
             if len(original_segments) > max_segments:
                 step = len(original_segments) // max_segments
                 orig_indices = list(range(step, len(original_segments) - step, step))[:max_segments]
             else:
                 orig_indices = list(range(len(original_segments)))
             
-            # Para el audio doblado: seleccionar segmentos distribuidos
             if len(dubbed_segments) > max_segments:
                 step = len(dubbed_segments) // max_segments
                 dub_indices = list(range(step, len(dubbed_segments) - step, step))[:max_segments]
             else:
                 dub_indices = list(range(len(dubbed_segments)))
             
-            current_app.logger.info(f"Original segments selected: {len(orig_indices)} (range: {min(orig_indices)}-{max(orig_indices)})")
-            current_app.logger.info(f"Dubbed segments selected: {len(dub_indices)} (range: {min(dub_indices)}-{max(dub_indices)})")
-            
-            # Filtrar segmentos con texto válido y no repetitivo
+            # Filtrar segmentos con texto válido
             orig_texts = []
             orig_selected_indices = []
             seen_texts = set()
@@ -508,7 +648,7 @@ class SyncService:
             for idx in orig_indices:
                 if idx < len(original_segments):
                     text = original_segments[idx].text.strip()
-                    if text and len(text) > 3 and text not in seen_texts:  # Evitar textos muy cortos y repetidos
+                    if text and len(text) > 3 and text not in seen_texts:
                         orig_texts.append(text)
                         orig_selected_indices.append(idx)
                         seen_texts.add(text)
@@ -520,7 +660,7 @@ class SyncService:
             for idx in dub_indices:
                 if idx < len(dubbed_segments):
                     text = dubbed_segments[idx].text.strip()
-                    if text and len(text) > 3 and text not in seen_texts:  # Evitar textos muy cortos y repetidos
+                    if text and len(text) > 3 and text not in seen_texts:
                         dub_texts.append(text)
                         dub_selected_indices.append(idx)
                         seen_texts.add(text)
@@ -528,24 +668,14 @@ class SyncService:
             current_app.logger.info(f"Original unique texts: {len(orig_texts)}")
             current_app.logger.info(f"Dubbed unique texts: {len(dub_texts)}")
             
-            # Mostrar algunos ejemplos de texto para debug
-            current_app.logger.info("=== SAMPLE ORIGINAL TEXTS ===")
-            for i, text in enumerate(orig_texts[:5]):
-                current_app.logger.info(f"Original {i}: '{text}'")
-            
-            current_app.logger.info("=== SAMPLE DUBBED TEXTS ===")
-            for i, text in enumerate(dub_texts[:5]):
-                current_app.logger.info(f"Dubbed {i}: '{text}'")
-            
             if not orig_texts or not dub_texts:
-                current_app.logger.info("No valid texts found, returning 0.0 offset")
-                return 0.0
+                current_app.logger.info("No valid texts found, using simple offset calculation")
+                return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
             
-            # Calcular embeddings en lotes pequeños para manejar memoria
+            # Calcular embeddings en lotes
             batch_size = 10
             best_offset = 0.0
             best_similarity = 0.0
-            best_match_info = ""
             
             current_app.logger.info("Starting semantic similarity analysis...")
             
@@ -557,32 +687,28 @@ class SyncService:
                     dub_batch = dub_texts[j:j+batch_size]
                     dub_embeddings = self.sentence_transformer.encode(dub_batch)
                     
-                    # Encontrar mejor correspondencia en este lote
                     for oi, orig_emb in enumerate(orig_embeddings):
                         for di, dub_emb in enumerate(dub_embeddings):
                             similarity = np.dot(orig_emb, dub_emb) / (np.linalg.norm(orig_emb) * np.linalg.norm(dub_emb))
                             
-                            if similarity > best_similarity and similarity > 0.3:  # Bajar umbral
+                            if similarity > best_similarity and similarity > 0.3:
                                 best_similarity = similarity
                                 orig_idx = orig_selected_indices[i + oi]
                                 dub_idx = dub_selected_indices[j + di]
                                 if orig_idx < len(original_segments) and dub_idx < len(dubbed_segments):
                                     best_offset = dubbed_segments[dub_idx].start - original_segments[orig_idx].start
-                                    best_match_info = f"Match: '{orig_texts[i+oi][:50]}...' <-> '{dub_texts[j+di][:50]}...'"
-                                    current_app.logger.info(f"New best match - Similarity: {similarity:.3f}, Offset: {best_offset:.3f}s")
-                                    current_app.logger.info(f"  Original segment {orig_idx}: {original_segments[orig_idx].start:.3f}s")
-                                    current_app.logger.info(f"  Dubbed segment {dub_idx}: {dubbed_segments[dub_idx].start:.3f}s")
-                                    current_app.logger.info(f"  Text: {best_match_info}")
             
-            current_app.logger.info(f"=== SEMANTIC ANALYSIS COMPLETE ===")
             current_app.logger.info(f"Best similarity: {best_similarity:.3f}")
             current_app.logger.info(f"Calculated offset: {best_offset:.3f}s")
-            if best_match_info:
-                current_app.logger.info(f"Best match: {best_match_info}")
             
-            # Si no encontramos buena correspondencia, usar fallback
+            # Validar offset
+            max_reasonable_offset = 60.0
+            if abs(best_offset) > max_reasonable_offset:
+                current_app.logger.warning(f"Offset too large: {best_offset:.3f}s, using simple calculation")
+                return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
+            
             if best_similarity < 0.3:
-                current_app.logger.info("Low similarity detected, using fallback offset calculation")
+                current_app.logger.info("Low similarity, using simple offset calculation")
                 return self._calculate_simple_offset_segments(original_segments, dubbed_segments)
             
             return best_offset
@@ -593,44 +719,99 @@ class SyncService:
     
     def _calculate_simple_offset_segments(self, original_segments: List[AudioSegment], 
                                         dubbed_segments: List[AudioSegment]) -> float:
-        """Calcular offset simple basado en segmentos"""
-        current_app.logger.info("=== CALCULATING SIMPLE OFFSET FROM SEGMENTS ===")
+        """Calcular offset simple basado en segmentos con manejo de offsets variables"""
+        current_app.logger.info("=== CALCULATING SIMPLE OFFSET ===")
         
         if not original_segments or not dubbed_segments:
             current_app.logger.info("No segments available, returning 0.0")
             return 0.0
         
-        # Mostrar información de los primeros segmentos
-        current_app.logger.info("=== FIRST SEGMENTS COMPARISON ===")
-        for i in range(min(3, len(original_segments), len(dubbed_segments))):
-            orig_seg = original_segments[i]
-            dub_seg = dubbed_segments[i]
-            current_app.logger.info(f"Segment {i}:")
-            current_app.logger.info(f"  Original: {orig_seg.start:.3f}s - '{orig_seg.text[:50]}...'")
-            current_app.logger.info(f"  Dubbed:   {dub_seg.start:.3f}s - '{dub_seg.text[:50]}...'")
-            current_app.logger.info(f"  Offset:   {dub_seg.start - orig_seg.start:.3f}s")
-        
-        # Calcular offset usando múltiples segmentos para mayor precisión
+        # MEJORADO: Calcular offset usando múltiples estrategias distribuidas en 15 minutos
         offsets = []
-        for i in range(min(10, len(original_segments), len(dubbed_segments))):
-            offset = dubbed_segments[i].start - original_segments[i].start
-            offsets.append(offset)
-            current_app.logger.info(f"Segment {i} offset: {offset:.3f}s")
         
-        # Usar la mediana de los offsets para mayor robustez
-        if offsets:
+        # Estrategia 1: Segmentos distribuidos uniformemente a lo largo de todo el tramo
+        # Usar más segmentos para aprovechar los 15 minutos completos
+        total_segments = min(len(original_segments), len(dubbed_segments))
+        if total_segments >= 20:
+            # Usar hasta 15 segmentos distribuidos uniformemente
+            num_sample_segments = min(15, total_segments)
+            step = total_segments // num_sample_segments
+            
+            current_app.logger.info(f"Using {num_sample_segments} segments distributed across {total_segments} total segments")
+            
+            for i in range(num_sample_segments):
+                idx = i * step
+                if idx < total_segments:
+                    offset = dubbed_segments[idx].start - original_segments[idx].start
+                    offsets.append(offset)
+                    current_app.logger.info(f"Segment {idx} (distributed): offset = {offset:.3f}s")
+        else:
+            # Si hay pocos segmentos, usar todos
+            for i in range(total_segments):
+                offset = dubbed_segments[i].start - original_segments[i].start
+                offsets.append(offset)
+                current_app.logger.info(f"Segment {i}: offset = {offset:.3f}s")
+        
+        # Estrategia 2: Segmentos del medio (si hay suficientes)
+        if len(original_segments) > 20 and len(dubbed_segments) > 20:
+            mid_orig = len(original_segments) // 2
+            mid_dub = len(dubbed_segments) // 2
+            mid_offset = dubbed_segments[mid_dub].start - original_segments[mid_orig].start
+            offsets.append(mid_offset)
+            current_app.logger.info(f"Mid segment offset: {mid_offset:.3f}s")
+        
+        # Estrategia 3: Últimos segmentos (si hay suficientes)
+        if len(original_segments) > 10 and len(dubbed_segments) > 10:
+            last_orig = min(len(original_segments) - 1, len(dubbed_segments) - 1)
+            last_dub = last_orig
+            last_offset = dubbed_segments[last_dub].start - original_segments[last_orig].start
+            offsets.append(last_offset)
+            current_app.logger.info(f"Last segment offset: {last_offset:.3f}s")
+        
+        current_app.logger.info(f"Calculated {len(offsets)} offsets from distributed sampling")
+        
+        # NUEVA ESTRATEGIA: Analizar la variación del offset
+        if len(offsets) > 1:
             import statistics
             median_offset = statistics.median(offsets)
-            current_app.logger.info(f"All offsets: {[f'{o:.3f}' for o in offsets]}")
-            current_app.logger.info(f"Median offset: {median_offset:.3f}s")
-            return median_offset
-        
-        # Fallback al primer segmento
-        offset = dubbed_segments[0].start - original_segments[0].start
-        current_app.logger.info(f"Simple offset calculated: {offset:.3f}s")
-        current_app.logger.info(f"Original first segment start: {original_segments[0].start:.3f}s")
-        current_app.logger.info(f"Dubbed first segment start: {dubbed_segments[0].start:.3f}s")
-        return offset
+            mean_offset = statistics.mean(offsets)
+            std_offset = statistics.stdev(offsets) if len(offsets) > 1 else 0
+            
+            current_app.logger.info(f"Offset analysis - Median: {median_offset:.3f}s, Mean: {mean_offset:.3f}s, Std: {std_offset:.3f}s")
+            
+            # Si hay mucha variación, usar una muestra más grande pero aún distribuida
+            max_variation = 30.0  # 30 segundos de variación máxima
+            if std_offset > max_variation:
+                current_app.logger.warning(f"High offset variation ({std_offset:.3f}s), using larger distributed sample")
+                # Usar más segmentos distribuidos pero con mayor espaciado
+                if total_segments >= 30:
+                    num_large_sample = min(20, total_segments)
+                    step_large = total_segments // num_large_sample
+                    large_sample_offsets = []
+                    
+                    for i in range(num_large_sample):
+                        idx = i * step_large
+                        if idx < total_segments:
+                            offset = dubbed_segments[idx].start - original_segments[idx].start
+                            large_sample_offsets.append(offset)
+                    
+                    final_offset = statistics.median(large_sample_offsets)
+                    current_app.logger.info(f"Using median of {len(large_sample_offsets)} distributed segments: {final_offset:.3f}s")
+                    return final_offset
+                else:
+                    # Si no hay suficientes segmentos, usar todos
+                    final_offset = statistics.median(offsets)
+                    current_app.logger.info(f"Using median of all available segments: {final_offset:.3f}s")
+                    return final_offset
+            else:
+                # Usar la mediana de todos los offsets calculados (distribuidos)
+                current_app.logger.info(f"Using median of distributed offsets: {median_offset:.3f}s")
+                return median_offset
+        else:
+            # Solo un offset disponible
+            final_offset = offsets[0] if offsets else 0.0
+            current_app.logger.info(f"Using single offset: {final_offset:.3f}s")
+            return final_offset
     
     def _calculate_simple_offset_from_audio(self, original_audio: str, dubbed_audio: str) -> float:
         """Calcular offset simple comparando archivos de audio"""
@@ -672,18 +853,19 @@ class SyncService:
             if abs(offset) < 0.1:  # Offset muy pequeño, copiar archivo
                 current_app.logger.info("Offset too small (< 0.1s), copying file without changes")
                 cmd = ['cp', audio_path, synced_audio_path]
-            elif offset > 0:  # Dubbed audio is DELAYED, need to ADVANCE it
-                current_app.logger.info(f"Positive offset detected: {offset:.3f}s - ADVANCING audio (removing delay)")
+            elif offset > 0:  # Dubbed audio is DELAYED (starts later), need to ADD silence at beginning
+                delay_ms = int(offset * 1000)
+                current_app.logger.info(f"Positive offset detected: {offset:.3f}s - Dubbed audio is DELAYED, ADDING {offset:.3f}s silence")
                 cmd = [
-                    'ffmpeg', '-ss', str(offset), '-i', audio_path,
+                    'ffmpeg', '-i', audio_path,
+                    '-af', f'adelay={delay_ms}|{delay_ms}',
                     '-threads', '0',
                     '-y', synced_audio_path
                 ]
-            else:  # Dubbed audio is AHEAD, need to DELAY it
-                current_app.logger.info(f"Negative offset detected: {offset:.3f}s - DELAYING audio (adding delay)")
+            else:  # Dubbed audio is AHEAD (starts earlier), need to CUT the beginning
+                current_app.logger.info(f"Negative offset detected: {offset:.3f}s - Dubbed audio is AHEAD, CUTTING first {abs(offset):.3f}s")
                 cmd = [
-                    'ffmpeg', '-i', audio_path,
-                    '-af', f'adelay={int(abs(offset) * 1000)}|{int(abs(offset) * 1000)}',
+                    'ffmpeg', '-ss', str(abs(offset)), '-i', audio_path,
                     '-threads', '0',
                     '-y', synced_audio_path
                 ]
@@ -800,16 +982,39 @@ class SyncService:
                 })
     
     def _cleanup_task_files(self, task_id: str):
-        """Limpiar archivos temporales de una tarea"""
+        """Limpiar archivos temporales de una tarea, preservando transcripciones"""
         try:
             with self._lock:
                 task = self.tasks.get(task_id, {})
                 temp_files = task.get('temp_files', [])
+                transcription_files = task.get('transcription_files', [])
             
+            # Preservar TODAS las transcripciones en /tmp para revisión manual
+            preserved_count = 0
+            for file_path in transcription_files:
+                try:
+                    if os.path.exists(file_path):
+                        preserved_count += 1
+                        if self.app:
+                            with self.app.app_context():
+                                current_app.logger.info(f"Preserving transcription: {file_path}")
+                except Exception as e:
+                    if self.app:
+                        with self.app.app_context():
+                            current_app.logger.warning(f"Error checking transcription file {file_path}: {e}")
+            
+            # Limpiar solo archivos de audio/video temporales
+            removed_count = 0
             for file_path in temp_files:
                 try:
                     if os.path.exists(file_path):
-                        os.remove(file_path)
+                        # NO eliminar archivos que contengan 'transcription' o 'debug'
+                        if 'transcription' not in file_path.lower() and 'debug' not in file_path.lower():
+                            os.remove(file_path)
+                            removed_count += 1
+                            if self.app:
+                                with self.app.app_context():
+                                    current_app.logger.info(f"Removed temp file: {file_path}")
                 except Exception as e:
                     if self.app:
                         with self.app.app_context():
@@ -817,7 +1022,7 @@ class SyncService:
             
             if self.app:
                 with self.app.app_context():
-                    current_app.logger.info(f"Cleaned up {len(temp_files)} temp files for task {task_id}")
+                    current_app.logger.info(f"Cleanup completed - Removed: {removed_count}, Preserved: {preserved_count}")
             
         except Exception as e:
             if self.app:
@@ -857,10 +1062,19 @@ class SyncService:
                 'tasks': [
                     {
                         'task_id': task_id,
+                        'name': task.get('name'),
                         'status': task['status'],
                         'progress': task['progress'],
                         'message': task['message'],
-                        'created_at': task['created_at']
+                        'created_at': task['created_at'],
+                        'original_path': task.get('original_path'),
+                        'dubbed_path': task.get('dubbed_path'),
+                        'original_info': task.get('original_info'),
+                        'dubbed_info': task.get('dubbed_info'),
+                        'custom_filename': task.get('custom_filename'),
+                        'custom_name': task.get('custom_name'),
+                        'result_path': task.get('result_path'),
+                        'error': task.get('error'),
                     }
                     for task_id, task in self.tasks.items()
                 ],

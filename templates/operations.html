@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Operaciones - SyncDub MVP{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-cogs me-2"></i> Selecciona una operación</h4>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        <a href="{{ url_for('main.upload') }}?mode=sync" class="list-group-item list-group-item-action">
+                            <i class="fas fa-random me-2"></i> Sincronizar pistas de audio de dos videos
+                        </a>
+                        <a href="{{ url_for('main.upload') }}?mode=convert" class="list-group-item list-group-item-action">
+                            <i class="fas fa-exchange-alt me-2"></i> Convertir video a H265
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

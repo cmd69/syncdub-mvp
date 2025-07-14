@@ -52,6 +52,31 @@ class Config:
     FFMPEG_VERBOSE = os.environ.get('FFMPEG_VERBOSE', 'false').lower() == 'true'
     MEMORY_MONITORING = os.environ.get('MEMORY_MONITORING', 'true').lower() == 'true'
     
+    # Duración máxima a extraer de cada audio (en segundos)
+    AUDIO_EXTRACT_DURATION = int(os.environ.get('AUDIO_EXTRACT_DURATION', 900))  # 15 minutos por defecto
+
+    # Configuración de limpieza de segmentos (puede ser un dict JSON en el entorno)
+    SEGMENT_CLEANING_CONFIG = {
+        'min_duration': float(os.environ.get('SEGMENT_MIN_DURATION', 1.0)),
+        'max_duration': float(os.environ.get('SEGMENT_MAX_DURATION', 30.0)),
+        'min_words': int(os.environ.get('SEGMENT_MIN_WORDS', 3)),
+    }
+
+    # Opciones de inferencia de Whisper (puede ser extendido)
+    WHISPER_OPTIONS = {
+        'temperature': [float(x) for x in os.environ.get('WHISPER_TEMPERATURE', '0.0').split(',')],
+        'beam_size': int(os.environ.get('WHISPER_BEAM_SIZE', 5)),
+    }
+
+    # Idioma de transcripción principal
+    TRANSCRIPTION_LANGUAGE = os.environ.get('TRANSCRIPTION_LANGUAGE', 'es')
+
+    # Modo test para transcripción (extraer solo fragmento)
+    TRANSCRIPTION_TEST_MODE = os.environ.get('TRANSCRIPTION_TEST_MODE', 'false').lower() == 'true'
+
+    # Porcentaje máximo de uso de memoria permitido (float entre 0 y 1)
+    MAX_MEMORY_USAGE = float(os.environ.get('MAX_MEMORY_USAGE', 0.85))
+    
     @staticmethod
     def init_app(app):
         """Inicializar configuración de la aplicación"""

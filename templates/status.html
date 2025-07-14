@@ -17,17 +17,17 @@
                 </button>
             </div>
             <div class="card-body">
+                <!-- Botón de diagnóstico -->
+                <!-- Eliminado: botón y resultado de diagnóstico -->
                 <!-- Loading -->
                 <div id="loadingTasks" class="text-center py-4">
                     <i class="fas fa-spinner fa-spin fa-2x text-muted mb-3"></i>
                     <p class="text-muted">Cargando tareas...</p>
                 </div>
-                
                 <!-- Tasks List -->
                 <div id="tasksList" class="d-none">
                     <!-- Tasks will be populated here -->
                 </div>
-                
                 <!-- No Tasks -->
                 <div id="noTasks" class="text-center py-5 d-none">
                     <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
@@ -47,6 +47,7 @@
 {% block scripts %}
 <script>
 let refreshInterval;
+let openDetails = new Set();
 
 document.addEventListener('DOMContentLoaded', function() {
     loadTasks();
@@ -86,13 +87,38 @@ function displayTasks(tasks) {
     tasks.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     
     tasksListElement.innerHTML = tasks.map(task => createTaskCard(task)).join('');
+    // Restaurar detalles abiertos
+    openDetails.forEach(taskId => {
+        const el = document.getElementById('details-' + taskId);
+        if (el) el.style.display = 'block';
+    });
 }
 
 function createTaskCard(task) {
     const statusClass = getStatusClass(task.status);
     const statusIcon = getStatusIcon(task.status);
     const createdAt = new Date(task.created_at).toLocaleString();
-    
+    const taskName = task.name || (task.custom_filename || task.custom_name || task.id);
+    // Detalles de archivos
+    function fileInfoBlock(info, label) {
+        if (!info) return '';
+        let audio = (info.audio_streams || []).map(a => `Codec: ${a.codec_name}, Canales: ${a.channels}, Sample rate: ${a.sample_rate}, Bitrate: ${a.bit_rate}`).join('<br>');
+        let video = (info.video_streams || []).map(v => `Codec: ${v.codec_name}, Resolución: ${v.width}x${v.height}, Bitrate: ${v.bit_rate}`).join('<br>');
+        function formatDuration(seconds) {
+            if (!seconds || isNaN(seconds)) return 'N/A';
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        }
+        return `<div class='mb-2'><b>${label}</b><br>
+        Ruta: <code>${info.path}</code><br>
+        Tamaño: ${(info.size/1024/1024).toFixed(2)} MB<br>
+        Duración: ${info.duration ? formatDuration(info.duration) : 'N/A'}<br>
+        <b>Pistas de audio:</b><br>${audio || 'N/A'}<br>
+        <b>Pistas de video:</b><br>${video || 'N/A'}
+        </div>`;
+    }
     return `
         <div class="card mb-3 border-start border-4 ${statusClass}">
             <div class="card-body">
@@ -100,16 +126,23 @@ function createTaskCard(task) {
                     <div class="col-md-8">
                         <div class="d-flex align-items-center mb-2">
                             <i class="fas ${statusIcon} me-2"></i>
-                            <h6 class="mb-0">Tarea ${task.task_id.substring(0, 8)}</h6>
+                            <h6 class="mb-0">${taskName}</h6>
                             <span class="badge ${getStatusBadgeClass(task.status)} ms-2">
                                 ${getStatusText(task.status)}
                             </span>
+                            <button class="btn btn-link btn-sm ms-2" type="button" onclick="toggleDetails('${task.id}')">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
                         </div>
                         <p class="text-muted mb-1">${task.message}</p>
                         <small class="text-muted">
                             <i class="fas fa-clock me-1"></i>
                             ${createdAt}
                         </small>
+                        <div id="details-${task.id}" class="mt-3" style="display:none;">
+                            ${fileInfoBlock(task.original_info, 'Archivo Original')}
+                            ${fileInfoBlock(task.dubbed_info, 'Archivo Doblado')}
+                        </div>
                     </div>
                     <div class="col-md-4">
                         ${task.status === 'processing' ? createProgressBar(task.progress) : ''}
@@ -202,6 +235,19 @@ function showError(message) {
     tasksListElement.classList.remove('d-none');
     document.getElementById('loadingTasks').classList.add('d-none');
     document.getElementById('noTasks').classList.add('d-none');
+}
+
+function toggleDetails(taskId) {
+    const el = document.getElementById('details-' + taskId);
+    if (el) {
+        if (el.style.display === 'none') {
+            el.style.display = 'block';
+            openDetails.add(taskId);
+        } else {
+            el.style.display = 'none';
+            openDetails.delete(taskId);
+        }
+    }
 }
 
 // Clean up interval when leaving page

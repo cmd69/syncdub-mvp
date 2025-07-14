@@ -2,7 +2,7 @@
 Blueprint principal para las rutas de la aplicación
 """
 
-from flask import Blueprint, render_template, current_app
+from flask import Blueprint, render_template, current_app, request, redirect, url_for
 
 bp = Blueprint('main', __name__)
 
@@ -31,4 +31,8 @@ def status():
 def result():
     """Página de resultados"""
     return render_template('result.html')
+
+@bp.route('/operations')
+def operations():
+    return render_template('operations.html')
 

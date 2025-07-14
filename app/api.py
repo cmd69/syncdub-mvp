@@ -109,6 +109,65 @@ def list_tasks():
         current_app.logger.error(f"Error en list_tasks: {str(e)}")
         return jsonify({'error': 'Error al listar tareas'}), 500
 
+@bp.route('/test-transcription', methods=['POST'])
+def test_transcription():
+    """Endpoint para probar transcripción y offset"""
+    try:
+        from app.services.sync_service import SyncService
+        import traceback
+        from pathlib import Path
+        
+        sync_service_test = SyncService()
+        sync_service_test.set_app(current_app._get_current_object())
+        result = {}
+        
+        # Buscar la sesión más reciente
+        sync_test_dir = Path("/tmp/sync_test")
+        sessions = [d for d in sync_test_dir.iterdir() if d.is_dir()] if sync_test_dir.exists() else []
+        if not sessions:
+            return jsonify({'ok': False, 'error': 'No hay sesiones de prueba'}), 404
+            
+        latest_session = max(sessions, key=lambda x: x.stat().st_mtime)
+        original_audio = latest_session / "original_audio.wav"
+        dubbed_audio = latest_session / "dubbed_audio.wav"
+        
+        if not original_audio.exists() or not dubbed_audio.exists():
+            return jsonify({'ok': False, 'error': 'No se encontraron los audios extraídos'}), 404
+        
+        # Cargar modelos
+        sync_service_test._load_ai_models_safe()
+        
+        # Transcribir
+        orig_segments = sync_service_test._transcribe_audio_safe(str(original_audio), "test")
+        dub_segments = sync_service_test._transcribe_audio_safe(str(dubbed_audio), "test")
+        
+        # Calcular offset
+        if sync_service_test.sentence_transformer:
+            offset = sync_service_test._calculate_sync_offset_safe(orig_segments, dub_segments)
+            method = 'semantic'
+        else:
+            offset = sync_service_test._calculate_simple_offset_segments(orig_segments, dub_segments)
+            method = 'simple'
+        
+        # Resumir resultados
+        result['ok'] = True
+        result['original_segments'] = len(orig_segments)
+        result['dubbed_segments'] = len(dub_segments)
+        result['offset'] = offset
+        result['method'] = method
+        result['sample_original'] = [
+            {'start': s.start, 'end': s.end, 'text': s.text} for s in orig_segments[:5]
+        ]
+        result['sample_dubbed'] = [
+            {'start': s.start, 'end': s.end, 'text': s.text} for s in dub_segments[:5]
+        ]
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        current_app.logger.error(f"Error en test_transcription: {str(e)}")
+        return jsonify({'ok': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
+
 # ===== ENDPOINTS PARA NAVEGACIÓN COMPLETA NFS =====
 
 @bp.route('/nfs-config')
@@ -116,8 +175,8 @@ def nfs_config():
     """Obtener configuración del sistema NFS"""
     try:
         # Verificar configuración
-        media_enabled = os.environ.get('MEDIA_SOURCE_ENABLED', 'false').lower() == 'true'
-        media_path = os.environ.get('MEDIA_SOURCE_PATH', '/app/video_source')
+        media_enabled = current_app.config.get('MEDIA_SOURCE_ENABLED', False)
+        media_path = current_app.config.get('MEDIA_SOURCE_PATH', '/app/video_source')
         
         result = {
             'enabled': media_enabled,
@@ -185,13 +244,13 @@ def nfs_browse():
     """Navegar contenido del volumen NFS con soporte para subdirectorios"""
     try:
         # Verificar si está habilitado
-        media_enabled = os.environ.get('MEDIA_SOURCE_ENABLED', 'false').lower() == 'true'
+        media_enabled = current_app.config.get('MEDIA_SOURCE_ENABLED', False)
         if not media_enabled:
             return jsonify({'error': 'Navegación NFS no habilitada'}), 403
         
         # Obtener ruta solicitada
         path = request.args.get('path', '').strip()
-        media_path = Path(os.environ.get('MEDIA_SOURCE_PATH', '/app/video_source'))
+        media_path = Path(current_app.config.get('MEDIA_SOURCE_PATH', '/app/video_source'))
         
         # Construir ruta completa
         if path:
@@ -368,11 +427,11 @@ def nfs_upload():
             return jsonify({'error': 'Se requieren ambas rutas de archivos'}), 400
         
         # Verificar que está habilitado
-        media_enabled = os.environ.get('MEDIA_SOURCE_ENABLED', 'false').lower() == 'true'
+        media_enabled = current_app.config.get('MEDIA_SOURCE_ENABLED', False)
         if not media_enabled:
             return jsonify({'error': 'Navegación NFS no habilitada'}), 403
         
-        media_base = Path(os.environ.get('MEDIA_SOURCE_PATH', '/app/video_source'))
+        media_base = Path(current_app.config.get('MEDIA_SOURCE_PATH', '/app/video_source'))
         
         # Construir rutas completas
         original_full = media_base / original_path

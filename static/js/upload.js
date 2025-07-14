@@ -16,6 +16,8 @@ class SyncDubUploader {
     init() {
         this.setupEventListeners();
         this.checkNFSStatus();
+        // Mostrar modo NFS por defecto al cargar
+        this.switchMode('server');
     }
 
     setupEventListeners() {
@@ -43,7 +45,9 @@ class SyncDubUploader {
         // Form de upload local
         document.getElementById('uploadForm')?.addEventListener('submit', (e) => {
             e.preventDefault();
-            this.processLocalFiles();
+            const params = new URLSearchParams(window.location.search);
+            const mode = params.get('mode') || 'sync';
+            this.processUnifiedUpload(mode);
         });
     }
 
@@ -383,6 +387,62 @@ class SyncDubUploader {
                 body: formData
             });
 
+            if (response.ok) {
+                const data = await response.json();
+                this.monitorTask(data.task_id);
+            } else {
+                const error = await response.json();
+                this.showError(`Error del servidor: ${error.error || response.status}`);
+            }
+        } catch (error) {
+            this.showError(`Error de conexión: ${error.message}`);
+        }
+    }
+
+    async processH265File() {
+        const form = document.getElementById('uploadForm');
+        const formData = new FormData(form);
+        try {
+            this.showProgress('Subiendo archivo para conversión a H265...');
+            // Endpoint placeholder para conversión H265
+            const response = await fetch('/api/convert-h265', {
+                method: 'POST',
+                body: formData
+            });
+            if (response.ok) {
+                const data = await response.json();
+                this.monitorTask(data.task_id); // Reutiliza monitorTask
+            } else {
+                const error = await response.json();
+                this.showError(`Error del servidor: ${error.error || response.status}`);
+            }
+        } catch (error) {
+            this.showError(`Error de conexión: ${error.message}`);
+        }
+    }
+
+    async processUnifiedUpload(mode) {
+        const form = document.getElementById('uploadForm');
+        const formData = new FormData();
+        // Solo incluir los campos visibles/activos según el modo
+        const originalInput = document.getElementById('originalVideo');
+        const dubbedInput = document.getElementById('dubbedVideo');
+        const outputNameInput = document.getElementById('outputName');
+        if (originalInput && originalInput.files.length > 0) {
+            formData.append('original_video', originalInput.files[0]);
+        }
+        if (mode !== 'convert' && dubbedInput && dubbedInput.files.length > 0) {
+            formData.append('dubbed_video', dubbedInput.files[0]);
+        }
+        if (outputNameInput && outputNameInput.value.trim() !== '') {
+            formData.append('output_name', outputNameInput.value.trim());
+        }
+        try {
+            this.showProgress('Subiendo archivo(s)...');
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
             if (response.ok) {
                 const data = await response.json();
                 this.monitorTask(data.task_id);
