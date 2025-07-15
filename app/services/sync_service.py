@@ -12,8 +12,8 @@ import json
 import tempfile
 import psutil
 from pathlib import Path
-from flask import current_app
-import numpy as np
+from flask import current_app  # type: ignore
+import numpy as np  # type: ignore
 from typing import List, Tuple, Dict, Optional
 from datetime import datetime
 import shutil
@@ -299,8 +299,11 @@ class SyncService:
             dubbed_path = task['dubbed_path']
             custom_filename = task.get('custom_filename', '') or task.get('custom_name', '')
 
-            # Crear carpeta de salida única para la tarea
-            output_dir = current_app.config['OUTPUT_FOLDER'] / (custom_filename or f"synced_{task_id}")
+            # Corregido: El directorio de salida nunca debe tener extensión .mkv
+            base_name = custom_filename or f"synced_{task_id}"
+            if base_name.lower().endswith('.mkv'):
+                base_name = base_name[:-4]
+            output_dir = current_app.config['OUTPUT_FOLDER'] / base_name
             output_dir.mkdir(parents=True, exist_ok=True)
             current_app.logger.info(f"Output directory for task: {output_dir}")
 
@@ -320,17 +323,22 @@ class SyncService:
             # Cargar modelos IA de forma segura
             self._update_task_status(task_id, 'processing', 35, "Preparando modelos de IA...")
             current_app.logger.info("Loading AI models...")
+            # Forzar modelo medium
+            current_app.config['WHISPER_MODEL'] = 'medium'
             ai_available = self._load_ai_models_safe()
             current_app.logger.info(f"AI models available: {ai_available}")
 
+            orig_es = orig_en = dub_es = dub_en = None
             if ai_available:
                 # Transcribir ambos audios a español y a inglés
                 self._update_task_status(task_id, 'processing', 45, "Transcribiendo audio original a ES...")
                 current_app.logger.info("Transcribing original audio to ES...")
                 orig_es = self.transcription_service.transcribe_audio(original_audio, task_id=task_id, test_mode=False)
                 if orig_es:
-                    with open(output_dir / "original_es.json", "w", encoding="utf-8") as f:
+                    with open(output_dir / "spanish.json", "w", encoding="utf-8") as f:
                         json.dump(orig_es, f, ensure_ascii=False, indent=2)
+                else:
+                    current_app.logger.warning("No segments found in original_es transcription!")
 
                 self._update_task_status(task_id, 'processing', 47, "Transcribiendo audio original a EN...")
                 current_app.logger.info("Transcribing original audio to EN...")
@@ -339,15 +347,19 @@ class SyncService:
                 orig_en = self.transcription_service.transcribe_audio(original_audio, task_id=task_id, test_mode=False)
                 current_app.config['TRANSCRIPTION_LANGUAGE'] = prev_lang
                 if orig_en:
-                    with open(output_dir / "original_en.json", "w", encoding="utf-8") as f:
+                    with open(output_dir / "english.json", "w", encoding="utf-8") as f:
                         json.dump(orig_en, f, ensure_ascii=False, indent=2)
+                else:
+                    current_app.logger.warning("No segments found in original_en transcription!")
 
                 self._update_task_status(task_id, 'processing', 60, "Transcribiendo audio doblado a ES...")
                 current_app.logger.info("Transcribing dubbed audio to ES...")
                 dub_es = self.transcription_service.transcribe_audio(dubbed_audio, task_id=task_id, test_mode=False)
                 if dub_es:
-                    with open(output_dir / "dubbed_es.json", "w", encoding="utf-8") as f:
+                    with open(output_dir / "dubbed_spanish.json", "w", encoding="utf-8") as f:
                         json.dump(dub_es, f, ensure_ascii=False, indent=2)
+                else:
+                    current_app.logger.warning("No segments found in dubbed_es transcription!")
 
                 self._update_task_status(task_id, 'processing', 62, "Transcribiendo audio doblado a EN...")
                 current_app.logger.info("Transcribing dubbed audio to EN...")
@@ -355,8 +367,10 @@ class SyncService:
                 dub_en = self.transcription_service.transcribe_audio(dubbed_audio, task_id=task_id, test_mode=False)
                 current_app.config['TRANSCRIPTION_LANGUAGE'] = prev_lang
                 if dub_en:
-                    with open(output_dir / "dubbed_en.json", "w", encoding="utf-8") as f:
+                    with open(output_dir / "dubbed_english.json", "w", encoding="utf-8") as f:
                         json.dump(dub_en, f, ensure_ascii=False, indent=2)
+                else:
+                    current_app.logger.warning("No segments found in dubbed_en transcription!")
 
                 # Calcular offset usando los segmentos en español
                 self._update_task_status(task_id, 'processing', 75, "Calculando sincronización...")
@@ -379,16 +393,18 @@ class SyncService:
             current_app.logger.info(f"Synced audio created: {synced_audio}")
             shutil.copy2(synced_audio, output_dir / "dubbed_audio_synced.wav")
 
-            # Generar archivo MKV final
+            # Generar archivo MKV final SOLO dentro de la carpeta de output
             self._update_task_status(task_id, 'processing', 95, "Generando archivo MKV final...")
             current_app.logger.info("Generating final MKV file...")
-            result_path = self._generate_mkv_final(original_path, original_audio, synced_audio, task_id)
+            result_path = self._generate_mkv_final(original_path, original_audio, synced_audio, task_id, output_dir)
             current_app.logger.info(f"Final MKV generated: {result_path}")
-            shutil.copy2(result_path, output_dir / (custom_filename or f"synced_{task_id}.mkv"))
+            final_filename = (custom_filename if custom_filename.lower().endswith('.mkv') else f"{base_name}.mkv")
+            # No copiar fuera, solo dejar en output_dir
+            # shutil.copy2(result_path, output_dir / final_filename)  # ELIMINADO
 
             # Completar tarea
             with self._lock:
-                self.tasks[task_id]['result_path'] = str(output_dir / (custom_filename or f"synced_{task_id}.mkv"))
+                self.tasks[task_id]['result_path'] = str(result_path)
                 self.tasks[task_id]['status'] = 'completed'
                 self.tasks[task_id]['progress'] = 100
                 self.tasks[task_id]['message'] = '¡Sincronización completada exitosamente!'
@@ -888,34 +904,34 @@ class SyncService:
             current_app.logger.error(f"Error in _apply_sync_offset: {str(e)}")
             raise Exception(f"Error aplicando sincronización: {str(e)}")
     
-    def _generate_mkv_final(self, original_video: str, original_audio: str, 
-                           synced_audio: str, task_id: str) -> str:
-        """Generar archivo MKV final con video original y ambas pistas de audio"""
+    def _generate_mkv_final(self, original_video: str, original_audio: str, synced_audio: str, task_id: str, output_dir=None) -> str:
+        """Generar archivo MKV final con video original y ambas pistas de audio en la carpeta de output_dir"""
         try:
             current_app.logger.info(f"=== GENERATING FINAL MKV ===")
             current_app.logger.info(f"Original video: {original_video}")
             current_app.logger.info(f"Original audio: {original_audio}")
             current_app.logger.info(f"Synced audio: {synced_audio}")
-            
-            output_dir = current_app.config['OUTPUT_FOLDER']
+
+            if output_dir is None:
+                output_dir = current_app.config['OUTPUT_FOLDER']
             output_dir.mkdir(exist_ok=True)
             current_app.logger.info(f"Output directory: {output_dir}")
-            
+
             # Determinar nombre del archivo
             task = self.tasks.get(task_id, {})
             custom_filename = task.get('custom_filename', '') or task.get('custom_name', '')
-            
+
             if custom_filename:
                 if not custom_filename.lower().endswith('.mkv'):
                     custom_filename += '.mkv'
                 result_filename = custom_filename
             else:
                 result_filename = f"synced_{task_id}.mkv"
-            
+
             result_path = output_dir / result_filename
             current_app.logger.info(f"Result filename: {result_filename}")
             current_app.logger.info(f"Result path: {result_path}")
-            
+
             # MEJORADO: Comando FFmpeg optimizado para conservar calidad original del audio
             cmd = [
                 'ffmpeg',
@@ -937,26 +953,25 @@ class SyncService:
                 '-y',                    # Sobrescribir
                 str(result_path)
             ]
-            
+
             current_app.logger.info(f"FFmpeg MKV command: {' '.join(cmd)}")
-            
+
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)  # 1 hora timeout
             if result.returncode != 0:
                 current_app.logger.error(f"FFmpeg MKV error output: {result.stderr}")
                 raise Exception(f"Error generando MKV: {result.stderr}")
-            
+
             current_app.logger.info("FFmpeg MKV command executed successfully")
-            
+
             # Verificar que el archivo se creó correctamente
             if not result_path.exists() or result_path.stat().st_size < 1000:
                 current_app.logger.error(f"Generated MKV file is empty or corrupted: {result_path}")
                 raise Exception("El archivo MKV generado está vacío o corrupto")
-            
+
             file_size = result_path.stat().st_size
             current_app.logger.info(f"MKV generated successfully: {result_path} ({file_size/(1024**2):.1f} MB)")
             current_app.logger.info(f"=== MKV GENERATION COMPLETE ===")
-            return str(result_path)
-            
+            return result_path
         except Exception as e:
             current_app.logger.error(f"Error in _generate_mkv_final: {str(e)}")
             raise Exception(f"Error generando archivo MKV: {str(e)}")

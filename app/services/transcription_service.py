@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import whisper
-import numpy as np
-from flask import current_app
+import numpy as np  # type: ignore
+from flask import current_app  # type: ignore
 
 # Eliminar: from transcription_config import TranscriptionConfig
 # Sustituir todos los usos de TranscriptionConfig.WHISPER_MODEL por current_app.config['WHISPER_MODEL']
@@ -77,7 +77,7 @@ class TranscriptionService:
             
             # Limpiar cache de GPU si está disponible
             try:
-                import torch
+                import torch  # type: ignore
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     self._log("GPU cache cleared")
@@ -345,6 +345,15 @@ class TranscriptionService:
                     temperature=temperature,
                     **whisper_options
                 )
+                # Guardar el JSON crudo de Whisper para debug
+                try:
+                    if task_id:
+                        raw_path = f"/tmp/whisper_raw_{task_id}.json"
+                        with open(raw_path, "w", encoding="utf-8") as f:
+                            json.dump(result, f, ensure_ascii=False, indent=2)
+                        self._log(f"Raw Whisper JSON saved: {raw_path}")
+                except Exception as e:
+                    self._log(f"Failed to save raw Whisper JSON: {e}", "WARNING")
             else:
                 self._log("Whisper model is not loaded", "ERROR")
                 return None
@@ -354,7 +363,9 @@ class TranscriptionService:
             
             # Limpiar segmentos para sincronización
             segments = result.get('segments', [])
+            self._log(f"Raw segments from Whisper: {len(segments)}")
             cleaned_segments = self.clean_segments_for_sync(segments)
+            self._log(f"Segments after cleaning: {len(cleaned_segments)}")
             
             if cleaned_segments:
                 # Calcular estadísticas
@@ -392,7 +403,7 @@ class TranscriptionService:
                     del self.whisper_model
                     self.whisper_model = None
                     try:
-                        import torch
+                        import torch  # type: ignore
                         if torch.cuda.is_available():
                             torch.cuda.empty_cache()
                     except Exception:

@@ -57,9 +57,9 @@ class Config:
 
     # Configuración de limpieza de segmentos (puede ser un dict JSON en el entorno)
     SEGMENT_CLEANING_CONFIG = {
-        'min_duration': float(os.environ.get('SEGMENT_MIN_DURATION', 1.0)),
-        'max_duration': float(os.environ.get('SEGMENT_MAX_DURATION', 30.0)),
-        'min_words': int(os.environ.get('SEGMENT_MIN_WORDS', 3)),
+        "min_duration": 0.5,   # Permitir segmentos desde 0.5s
+        "max_duration": 60.0,  # Hasta 1 minuto
+        "min_words": 1         # Permitir segmentos de una sola palabra
     }
 
     # Opciones de inferencia de Whisper (puede ser extendido)
