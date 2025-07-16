@@ -4,6 +4,25 @@ Configuración de la aplicación SyncDub MVP
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()  # Carga variables de .env
+
+MEDIA_SOURCE_PATH = os.environ.get("MEDIA_SOURCE_PATH", "/mnt/nfs/media")
+
+DOWNLOADS_DIRS = [
+    os.path.join(MEDIA_SOURCE_PATH, "downloads/completed/movies"),
+    os.path.join(MEDIA_SOURCE_PATH, "downloads/completed/peliculas"),
+    os.path.join(MEDIA_SOURCE_PATH, "downloads/completed/series"),
+    os.path.join(MEDIA_SOURCE_PATH, "downloads/completed/tv"),
+]
+
+MEDIA_DIRS = [
+    os.path.join(MEDIA_SOURCE_PATH, "movies"),
+    os.path.join(MEDIA_SOURCE_PATH, "peliculas"),
+    os.path.join(MEDIA_SOURCE_PATH, "series"),
+    os.path.join(MEDIA_SOURCE_PATH, "tv"),
+]
 
 class Config:
     """Configuración base de la aplicación SyncDub"""
@@ -16,7 +35,6 @@ class Config:
     
     # Configuración de volumen de medios
     MEDIA_SOURCE_ENABLED = os.environ.get('MEDIA_SOURCE_ENABLED', 'false').lower() == 'true'
-    MEDIA_SOURCE_PATH = os.environ.get('MEDIA_SOURCE_PATH', str(BASE_DIR / 'video_source'))
     
     # Configuración Flask
     SECRET_KEY = os.environ.get('SECRET_KEY', 'syncdub-secret-key-2024')
@@ -105,4 +123,3 @@ config = {
     'production': ProductionConfig,
     'default': ProductionConfig
 }
-

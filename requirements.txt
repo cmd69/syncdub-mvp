@@ -58,6 +58,8 @@ pympler==0.9
 tqdm==4.66.1
 click==8.1.7
 packaging==23.2
+python-dotenv
 
 # Dependencias adicionales para GPU
 nvidia-ml-py3==7.352.0
+tmdbv3api

@@ -6,8 +6,9 @@ import os
 import logging
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, redirect, url_for
-from config import Config
+from config import Config, DOWNLOADS_DIRS, MEDIA_DIRS
 from app.main import bp as main_bp
+from media_scan import scan_media_dirs, mark_imported_files, group_by_clean_name
 
 def create_app(config_class=Config):
     """Factory para crear la aplicación Flask"""
@@ -58,6 +59,13 @@ def create_app(config_class=Config):
     def status():
         """Página de estado de tareas"""
         return render_template('status.html')
+    
+    @app.route('/downloads')
+    def downloads_view():
+        files = scan_media_dirs(DOWNLOADS_DIRS, MEDIA_DIRS)
+        downloads = mark_imported_files(files)
+        groups = group_by_clean_name(downloads)
+        return render_template('downloads.html', groups=groups)
     
     # CORREGIDO: Endpoint de salud que estaba faltando
     @app.route('/api/health')
