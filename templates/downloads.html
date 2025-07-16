@@ -1,67 +1,66 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Descargas - Estado de Importación</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .imported-row { background: #d4ffd4; }
-        .not-imported-row { background: #ffd4d4; }
-        .group-card { margin-bottom: 2rem; }
-        .group-title { font-size: 1.3rem; font-weight: bold; }
-        .season-badge { font-size: 1rem; margin-left: 1em; }
-    </style>
-</head>
-<body class="bg-light">
-<div class="container py-4">
-    <h1 class="mb-4">Descargas agrupadas por Título (TMDB)</h1>
-    {% if groups %}
-        {% for key, files in groups.items() %}
-            {% set tmdb_type, clean_name = key %}
-            <div class="card group-card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <span class="group-title">{{ clean_name }}</span>
-                    {% if tmdb_type == 'series' %}
-                        <span class="badge bg-secondary season-badge">Serie</span>
-                    {% elif tmdb_type == 'movie' %}
-                        <span class="badge bg-info ms-2">Película</span>
-                    {% else %}
-                        <span class="badge bg-warning ms-2">Desconocido</span>
-                    {% endif %}
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-sm mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Nombre</th>
-                                    <th>Tamaño (MB)</th>
-                                    <th>Calidad</th>
-                                    <th>Codec</th>
-                                    <th>Importado</th>
-                                    <th>Ruta</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for f in files %}
-                                <tr class="{{ 'imported-row' if f.imported else 'not-imported-row' }}">
-                                    <td>{{ f.name }}</td>
-                                    <td>{{ f.size_mb }}</td>
-                                    <td>{{ f.quality or '' }}</td>
-                                    <td>{{ f.codec or '' }}</td>
-                                    <td><span class="badge {{ 'bg-success' if f.imported else 'bg-danger' }}">{{ 'Sí' if f.imported else 'No' }}</span></td>
-                                    <td style="font-size: 0.9em; color: #555;">{{ f.path }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+{% extends "base.html" %}
+
+{% block title %}Descargas - SyncDub MVP{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="text-center mb-5">
+            <h1 class="display-5 fw-bold text-primary mb-3">
+                <i class="fas fa-download me-2"></i>
+                Descargas
+            </h1>
+            <p class="lead text-muted">
+                Archivos agrupados por título. Estado de importación y detalles técnicos.
+            </p>
+        </div>
+        {% if groups %}
+            {% for key, files in groups.items() %}
+                {% set tmdb_type, clean_name = key %}
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-primary text-white d-flex align-items-center">
+                        <span class="fs-5 fw-bold">{{ clean_name }}</span>
+                        {% if tmdb_type == 'series' %}
+                            <span class="badge bg-secondary ms-3">Serie</span>
+                        {% elif tmdb_type == 'movie' %}
+                            <span class="badge bg-info ms-3">Película</span>
+                        {% else %}
+                            <span class="badge bg-warning ms-3">Desconocido</span>
+                        {% endif %}
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Tamaño (MB)</th>
+                                        <th>Calidad</th>
+                                        <th>Codec</th>
+                                        <th>Importado</th>
+                                        <th>Ruta</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for f in files %}
+                                    <tr class="{% if f.imported %}table-success{% else %}table-danger{% endif %}">
+                                        <td>{{ f.name }}</td>
+                                        <td>{{ f.size_mb }}</td>
+                                        <td>{{ f.quality or '' }}</td>
+                                        <td>{{ f.codec or '' }}</td>
+                                        <td><span class="badge {% if f.imported %}bg-success{% else %}bg-danger{% endif %}">{{ 'Sí' if f.imported else 'No' }}</span></td>
+                                        <td style="font-size: 0.9em; color: #555;">{{ f.path }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
-            </div>
-        {% endfor %}
-    {% else %}
-        <div class="alert alert-warning">No se encontraron archivos de descargas.</div>
-    {% endif %}
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-warning text-center">No se encontraron archivos de descargas.</div>
+        {% endif %}
+    </div>
 </div>
-</body>
-</html> 
+{% endblock %} 

@@ -63,13 +63,6 @@ def create_app(config_class=Config):
         """Página de estado de tareas"""
         return render_template('status.html')
     
-    @app.route('/downloads')
-    def downloads_view():
-        files = scan_media_dirs(DOWNLOADS_DIRS, MEDIA_DIRS)
-        downloads = mark_imported_files(files)
-        groups = group_by_clean_name(downloads)
-        return render_template('downloads.html', groups=groups)
-    
     # CORREGIDO: Endpoint de salud que estaba faltando
     @app.route('/api/health')
     def health():

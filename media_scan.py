@@ -1,6 +1,6 @@
 import os
 import re
-from typing import List, Dict
+from typing import List, Dict, Optional
 from config import DOWNLOADS_DIRS, MEDIA_DIRS
 from tmdbv3api import TMDb, Movie, TV
 
@@ -11,32 +11,37 @@ _tmdb = None
 _movie = None
 _tv = None
 
-def get_tmdb_english_title_year(title: str, year: int = None):
+def get_tmdb_english_title_year(title: str, year: Optional[int] = None):
     """
     Busca en TMDB el nombre en inglés y el año oficial de una película o serie.
     Devuelve (titulo_en_ingles, año_oficial, tipo) o (None, None, None) si no encuentra.
     """
-    global _tmdb, _movie, _tv
-    if _tmdb is None:
-        _tmdb = TMDb()
-        _tmdb.api_key = os.environ.get('TMDB_API_KEY')
-        _movie = Movie()
-        _tv = TV()
-    # Primero busca como película
-    results = _movie.search(title)
-    for r in results:
-        if year and hasattr(r, 'release_date') and r.release_date:
-            if str(year) not in r.release_date:
-                continue
-        # Coincidencia aceptable
-        return getattr(r, 'original_title', None), int(r.release_date[:4]) if r.release_date else None, 'movie'
-    # Si no, busca como serie
-    results = _tv.search(title)
-    for r in results:
-        if year and hasattr(r, 'first_air_date') and r.first_air_date:
-            if str(year) not in r.first_air_date:
-                continue
-        return getattr(r, 'original_name', None), int(r.first_air_date[:4]) if r.first_air_date else None, 'series'
+    # global _tmdb, _movie, _tv
+    # if _tmdb is None:
+    #     _tmdb = TMDb()
+    #     _tmdb.api_key = os.environ.get('TMDB_API_KEY')
+    #     _movie = Movie()
+    #     _tv = TV()
+    # # Primero busca como película
+    # results = _movie.search(title)
+    # for r in results:
+    #     # Solo procesa si r tiene los atributos esperados
+    #     if not hasattr(r, 'original_title') or not hasattr(r, 'release_date'):
+    #         continue
+    #     if year and r.release_date:
+    #         if str(year) not in r.release_date:
+    #             continue
+    #     # Coincidencia aceptable
+    #     return getattr(r, 'original_title', None), int(r.release_date[:4]) if r.release_date else None, 'movie'
+    # # Si no, busca como serie
+    # results = _tv.search(title)
+    # for r in results:
+    #     if not hasattr(r, 'original_name') or not hasattr(r, 'first_air_date'):
+    #         continue
+    #     if year and r.first_air_date:
+    #         if str(year) not in r.first_air_date:
+    #             continue
+    #     return getattr(r, 'original_name', None), int(r.first_air_date[:4]) if r.first_air_date else None, 'series'
     return None, None, None
 
 def extract_quality_codec(filename: str):
