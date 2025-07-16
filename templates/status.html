@@ -58,7 +58,9 @@ function loadTasks() {
     fetch('/api/tasks')
         .then(response => response.json())
         .then(data => {
-            displayTasks(data.tasks || []);
+            // Mostrar tareas en memoria (en curso) y de la BBDD (historial)
+            const allTasks = [...(data.tasks_in_memory || []), ...(data.tasks_db || [])];
+            displayTasks(allTasks);
         })
         .catch(error => {
             console.error('Error loading tasks:', error);

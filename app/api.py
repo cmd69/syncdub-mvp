@@ -10,10 +10,13 @@ from flask import Blueprint, request, jsonify, current_app, send_file
 from werkzeug.utils import secure_filename
 from app.services.sync_service import sync_service
 from app.utils.file_utils import allowed_file, get_file_extension
+from flask_login import login_required
+from app.models.task import SyncTask
 
 bp = Blueprint('api', __name__)
 
 @bp.route('/upload', methods=['POST'])
+@login_required
 def upload_files():
     """Endpoint para subir archivos de video"""
     try:
@@ -76,6 +79,7 @@ def upload_files():
         return jsonify({'error': 'Error interno del servidor'}), 500
 
 @bp.route('/status/<task_id>')
+@login_required
 def get_status(task_id):
     """Obtener estado del procesamiento"""
     try:
@@ -86,6 +90,7 @@ def get_status(task_id):
         return jsonify({'error': 'Error al obtener estado'}), 500
 
 @bp.route('/download/<task_id>')
+@login_required
 def download_result(task_id):
     """Descargar archivo resultado"""
     try:
@@ -100,11 +105,20 @@ def download_result(task_id):
         return jsonify({'error': 'Error al descargar archivo'}), 500
 
 @bp.route('/tasks')
+@login_required
 def list_tasks():
-    """Listar todas las tareas"""
+    """Listar todas las tareas (en memoria y en BBDD)"""
     try:
-        tasks = sync_service.list_all_tasks()
-        return jsonify(tasks), 200
+        # Tareas en memoria (en curso)
+        tasks_in_memory = sync_service.list_all_tasks().get('tasks', [])
+        # Tareas históricas en BBDD
+        db_tasks = SyncTask.query.order_by(SyncTask.created_at.desc()).all()
+        tasks_db = [t.to_dict() for t in db_tasks]
+        return jsonify({
+            'tasks_in_memory': tasks_in_memory,
+            'tasks_db': tasks_db,
+            'total': len(tasks_in_memory) + len(tasks_db)
+        }), 200
     except Exception as e:
         current_app.logger.error(f"Error en list_tasks: {str(e)}")
         return jsonify({'error': 'Error al listar tareas'}), 500
@@ -352,6 +366,7 @@ def nfs_browse():
         return jsonify({'error': f'Error navegando directorio: {str(e)}'}), 500
 
 @bp.route('/nfs-upload', methods=['POST'])
+@login_required
 def nfs_upload():
     """Procesar archivos seleccionados desde NFS"""
     try:

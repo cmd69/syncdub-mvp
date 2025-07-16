@@ -52,6 +52,14 @@ class Config:
     FFMPEG_VERBOSE = os.environ.get('FFMPEG_VERBOSE', 'false').lower() == 'true'
     MEMORY_MONITORING = os.environ.get('MEMORY_MONITORING', 'true').lower() == 'true'
     
+    # Configuración de usuario admin para login
+    DEFAULT_ADMIN_USER = os.environ.get('LOGIN_USER', 'admin')
+    DEFAULT_ADMIN_PASSWORD = os.environ.get('LOGIN_PASSWORD', 'admin')
+    
+    # Configuración de la base de datos
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///syncdub.db')
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    
     @staticmethod
     def init_app(app):
         """Inicializar configuración de la aplicación"""

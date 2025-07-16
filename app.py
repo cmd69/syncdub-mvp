@@ -8,6 +8,9 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from config import Config
 from app.main import bp as main_bp
+from flask_login import LoginManager
+from app.models.database import init_db
+from app.models.user import User
 
 def create_app(config_class=Config):
     """Factory para crear la aplicación Flask"""
@@ -94,6 +97,26 @@ def create_app(config_class=Config):
             'status': 500,
             'message': 'Ha ocurrido un error interno'
         }), 500
+    
+    # Inicializar base de datos y usuario admin
+    init_db(app)
+
+    # Configurar Flask-Login
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = 'main.login'
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        return User.query.get(int(user_id))
+    
+    @app.route('/api/media/status')
+    def media_status():
+        return jsonify({"enabled": False, "accessible": False, "message": "No implementado"}), 200
+
+    @app.route('/api/system-info')
+    def system_info():
+        return jsonify({"info": "No implementado"}), 200
     
     return app
 

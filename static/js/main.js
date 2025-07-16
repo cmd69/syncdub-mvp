@@ -218,13 +218,23 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add smooth scrolling to anchor links
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         anchor.addEventListener('click', function(e) {
+            const href = this.getAttribute('href');
+            // Siempre previene el comportamiento por defecto para evitar saltos de página
             e.preventDefault();
-            const target = document.querySelector(this.getAttribute('href'));
-            if (target) {
-                target.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
+            // Solo intenta hacer scroll si el href es un selector válido y no es solo "#"
+            if (href && href.length > 1) {
+                try {
+                    const target = document.querySelector(href);
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                } catch (err) {
+                    // Silencia errores de selectores inválidos
+                    console.warn('Selector inválido para smooth scroll:', href, err);
+                }
             }
         });
     });

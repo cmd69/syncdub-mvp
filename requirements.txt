@@ -9,6 +9,10 @@ MarkupSafe==2.1.3
 
 # CORS para frontend-backend
 Flask-CORS==4.0.0
+Flask-Login
+bcrypt
+Flask-SQLAlchemy
+Flask-Migrate
 
 # Procesamiento de archivos
 Pillow==10.0.1
