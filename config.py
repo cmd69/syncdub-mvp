@@ -94,7 +94,17 @@ class Config:
 
     # Porcentaje máximo de uso de memoria permitido (float entre 0 y 1)
     MAX_MEMORY_USAGE = float(os.environ.get('MAX_MEMORY_USAGE', 0.85))
+
+    # Configuración de usuario admin para login
+    DEFAULT_ADMIN_USER = os.environ.get('LOGIN_USER', 'admin')
+    DEFAULT_ADMIN_PASSWORD = os.environ.get('LOGIN_PASSWORD', 'admin')
     
+    # Configuración de la base de datos
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///syncdub.db')
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    
+    MEDIA_SOURCE_PATH = MEDIA_SOURCE_PATH
+
     @staticmethod
     def init_app(app):
         """Inicializar configuración de la aplicación"""

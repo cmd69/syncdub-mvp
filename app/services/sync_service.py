@@ -17,9 +17,9 @@ import numpy as np  # type: ignore
 from typing import List, Tuple, Dict, Optional
 from datetime import datetime
 import shutil
-
-# Importar el nuevo servicio de transcripción
 from .transcription_service import TranscriptionService
+from app.models.task import SyncTask
+from app.models.database import db
 
 class AudioSegment:
     """Representa un segmento de audio transcrito"""
@@ -289,6 +289,29 @@ class SyncService:
         with self.app.app_context():
             self._process_sync_task(task_id)
     
+    def _save_task_to_db(self, task_id):
+        """Guardar o actualizar la tarea en la base de datos"""
+        with self._lock:
+            task = self.tasks.get(task_id)
+            if not task:
+                return
+            sync_task = SyncTask.query.get(task_id)
+            if not sync_task:
+                sync_task = SyncTask(id=task_id)
+            sync_task.status = task['status']
+            sync_task.progress = task['progress']
+            sync_task.message = task['message']
+            sync_task.created_at = datetime.fromisoformat(task['created_at']) if isinstance(task['created_at'], str) else task['created_at']
+            sync_task.finished_at = datetime.utcnow() if task['status'] in ['completed', 'error', 'failed'] else None
+            sync_task.original_path = task.get('original_path')
+            sync_task.dubbed_path = task.get('dubbed_path')
+            sync_task.result_path = task.get('result_path')
+            sync_task.error = task.get('error')
+            sync_task.custom_name = task.get('custom_name')
+            sync_task.source_type = task.get('source_type')
+            db.session.add(sync_task)
+            db.session.commit()
+    
     def _process_sync_task(self, task_id: str):
         """Procesamiento optimizado de sincronización de audio para archivos grandes"""
         try:
@@ -408,12 +431,13 @@ class SyncService:
                 self.tasks[task_id]['status'] = 'completed'
                 self.tasks[task_id]['progress'] = 100
                 self.tasks[task_id]['message'] = '¡Sincronización completada exitosamente!'
-
-            current_app.logger.info(f"=== TASK COMPLETED SUCCESSFULLY: {task_id} ===")
-
+            self._save_task_to_db(task_id)
+            current_app.logger.info(f"Task completed successfully: {task_id}")
+            
         except Exception as e:
             current_app.logger.error(f"=== ERROR PROCESSING TASK {task_id}: {str(e)} ===")
             self._update_task_error(task_id, f"Error en el procesamiento: {str(e)}")
+            self._save_task_to_db(task_id)
         finally:
             # Limpiar archivos temporales y memoria
             self._cleanup_task_files(task_id)
