@@ -2,6 +2,15 @@
 
 {% block title %}Descargas - SyncDub MVP{% endblock %}
 
+{% block head %}
+<style>
+    .col-inode {
+        min-width: 120px;
+        width: 120px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row">
     <div class="col-lg-10 mx-auto">
@@ -13,54 +22,228 @@
             <p class="lead text-muted">
                 Archivos agrupados por título. Estado de importación y detalles técnicos.
             </p>
-        </div>
-        {% if groups %}
-            {% for key, files in groups.items() %}
-                {% set tmdb_type, clean_name = key %}
-                <div class="card border-0 shadow-sm mb-4">
-                    <div class="card-header bg-primary text-white d-flex align-items-center">
-                        <span class="fs-5 fw-bold">{{ clean_name }}</span>
-                        {% if tmdb_type == 'series' %}
-                            <span class="badge bg-secondary ms-3">Serie</span>
-                        {% elif tmdb_type == 'movie' %}
-                            <span class="badge bg-info ms-3">Película</span>
-                        {% else %}
-                            <span class="badge bg-warning ms-3">Desconocido</span>
-                        {% endif %}
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-sm mb-0 align-middle">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Nombre</th>
-                                        <th>Tamaño (MB)</th>
-                                        <th>Calidad</th>
-                                        <th>Codec</th>
-                                        <th>Importado</th>
-                                        <th>Ruta</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for f in files %}
-                                    <tr class="{% if f.imported %}table-success{% else %}table-danger{% endif %}">
-                                        <td>{{ f.name }}</td>
-                                        <td>{{ f.size_mb }}</td>
-                                        <td>{{ f.quality or '' }}</td>
-                                        <td>{{ f.codec or '' }}</td>
-                                        <td><span class="badge {% if f.imported %}bg-success{% else %}bg-danger{% endif %}">{{ 'Sí' if f.imported else 'No' }}</span></td>
-                                        <td style="font-size: 0.9em; color: #555;">{{ f.path }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+            {% set total_inodes = 0 %}
+            {% set total_routes = 0 %}
+            {% for movie in movies %}
+                {% for version in movie.versions %}
+                    {% set total_inodes = total_inodes + 1 %}
+                    {% for f in version %}
+                        {% set total_routes = total_routes + 1 %}
+                    {% endfor %}
+                {% endfor %}
             {% endfor %}
-        {% else %}
-            <div class="alert alert-warning text-center">No se encontraron archivos de descargas.</div>
-        {% endif %}
+            {% for serie in series %}
+                {% for version in serie.versions %}
+                    {% set total_inodes = total_inodes + 1 %}
+                    {% for f in version %}
+                        {% set total_routes = total_routes + 1 %}
+                    {% endfor %}
+                {% endfor %}
+            {% endfor %}
+            <p class="text-info">
+                <i class="fas fa-info-circle me-1"></i>
+                Total: {{ total_inodes }} inodos únicos, {{ total_routes }} rutas de archivos
+            </p>
+        </div>
+        <div class="mb-4">
+            <details>
+                <summary class="text-primary">Ver datos de depuración (películas y series)</summary>
+                <div class="bg-light p-3 mt-2 rounded">
+                    <strong>Películas:</strong>
+                    <pre style="font-size: 0.85em;">{{ movies|tojson(indent=2) }}</pre>
+                    <strong>Series:</strong>
+                    <pre style="font-size: 0.85em;">{{ series|tojson(indent=2) }}</pre>
+                </div>
+            </details>
+        </div>
+        <ul class="nav nav-tabs mb-4" id="downloadsTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="movies-tab" data-bs-toggle="tab" data-bs-target="#movies" type="button" role="tab" aria-controls="movies" aria-selected="true">
+                    <i class="fas fa-film me-1"></i> Películas
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="series-tab" data-bs-toggle="tab" data-bs-target="#series" type="button" role="tab" aria-controls="series" aria-selected="false">
+                    <i class="fas fa-tv me-1"></i> Series
+                </button>
+            </li>
+        </ul>
+        <div class="tab-content" id="downloadsTabContent">
+            <div class="tab-pane fade show active" id="movies" role="tabpanel" aria-labelledby="movies-tab">
+                {% if movies %}
+                    {% for movie in movies %}
+                        <div class="card border-0 shadow-sm mb-4">
+                            <div class="card-header bg-primary text-white d-flex align-items-center">
+                                <span class="fs-5 fw-bold">{{ movie.title }}{% if movie.year %} ({{ movie.year }}){% endif %}</span>
+                                <span class="badge bg-info ms-3">Película</span>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-sm mb-0 align-middle">
+                                        <thead class="table-light">
+                                            <tr>
+                                                {% set group_inodes = movie.versions|length %}
+                                                {% set group_routes = 0 %}
+                                                {% for version in movie.versions %}
+                                                    {% set group_routes = group_routes + version|length %}
+                                                {% endfor %}
+                                                <th class="col-inode">Inodos ({{ group_inodes }})</th>
+                                                <th>Rutas ({{ group_routes }})</th>
+                                                <th>Ubicación</th>
+                                                <th>Tamaño</th>
+                                                <th>Importado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for version in movie.versions %}
+                                            <tr>
+                                                <td><code>{{ version[0].inode }}</code></td>
+                                                <td>
+                                                    {% for f in version %}
+                                                        <div class="d-flex align-items-center mb-1">
+                                                            <i class="fas fa-file-alt text-secondary me-2"></i>
+                                                            <span style="font-size: 0.95em; color: #555;">{{ f.path.replace('/app/video_source', '') }}</span>
+                                                        </div>
+                                                    {% endfor %}
+                                                </td>
+                                                <td>
+                                                    {% for f in version %}
+                                                        {% if f.location == 'downloads' %}
+                                                            <span class="badge bg-warning text-dark">Descargas</span>
+                                                        {% elif f.location == 'media' %}
+                                                            {% if 'tv' in f.path.lower() or 'series' in f.path.lower() %}
+                                                                <span class="badge bg-success">TV</span>
+                                                            {% elif 'movie' in f.path.lower() %}
+                                                                <span class="badge bg-success">MOVIE</span>
+                                                            {% elif 'peli' in f.path.lower() %}
+                                                                <span class="badge bg-success">PELI</span>
+                                                            {% elif 'serie' in f.path.lower() %}
+                                                                <span class="badge bg-success">SERIE</span>
+                                                            {% else %}
+                                                                <span class="badge bg-success">Media</span>
+                                                            {% endif %}
+                                                        {% else %}
+                                                            <span class="badge bg-secondary">{{ f.location }}</span>
+                                                        {% endif %}
+                                                        {% if not loop.last %}, {% endif %}
+                                                    {% endfor %}
+                                                </td>
+                                                <td>
+                                                    {% set size_gb = version[0].size_mb / 1024 %}
+                                                    {% if size_gb >= 1 %}
+                                                        {{ '%.2f' % size_gb }} GB
+                                                    {% else %}
+                                                        {{ version[0].size_mb }} MB
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% set imported = version|selectattr('location', 'equalto', 'media')|list|length > 0 %}
+                                                    {% if imported %}
+                                                        <span class="badge bg-success">Sí</span>
+                                                    {% else %}
+                                                        <span class="badge bg-danger">No</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="alert alert-warning text-center">No se encontraron películas.</div>
+                {% endif %}
+            </div>
+            <div class="tab-pane fade" id="series" role="tabpanel" aria-labelledby="series-tab">
+                {% if series %}
+                    {% for serie in series %}
+                        <div class="card border-0 shadow-sm mb-4">
+                            <div class="card-header bg-primary text-white d-flex align-items-center">
+                                <span class="fs-5 fw-bold">{{ serie.title }}{% if serie.year %} ({{ serie.year }}){% endif %}</span>
+                                <span class="badge bg-secondary ms-3">Serie</span>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-sm mb-0 align-middle">
+                                        <thead class="table-light">
+                                            <tr>
+                                                {% set group_inodes = serie.versions|length %}
+                                                {% set group_routes = 0 %}
+                                                {% for version in serie.versions %}
+                                                    {% set group_routes = group_routes + version|length %}
+                                                {% endfor %}
+                                                <th class="col-inode">Inodos ({{ group_inodes }})</th>
+                                                <th>Rutas ({{ group_routes }})</th>
+                                                <th>Ubicación</th>
+                                                <th>Tamaño</th>
+                                                <th>Importado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for version in serie.versions %}
+                                            <tr>
+                                                <td><code>{{ version[0].inode }}</code></td>
+                                                <td>
+                                                    {% for f in version %}
+                                                        <div class="d-flex align-items-center mb-1">
+                                                            <i class="fas fa-file-alt text-secondary me-2"></i>
+                                                            <span style="font-size: 0.95em; color: #555;">{{ f.path.replace('/app/video_source', '') }}</span>
+                                                        </div>
+                                                    {% endfor %}
+                                                </td>
+                                                <td>
+                                                    {% for f in version %}
+                                                        {% if f.location == 'downloads' %}
+                                                            <span class="badge bg-warning text-dark">Descargas</span>
+                                                        {% elif f.location == 'media' %}
+                                                            {% if 'tv' in f.path.lower() or 'series' in f.path.lower() %}
+                                                                <span class="badge bg-success">TV</span>
+                                                            {% elif 'movie' in f.path.lower() %}
+                                                                <span class="badge bg-success">MOVIE</span>
+                                                            {% elif 'peli' in f.path.lower() %}
+                                                                <span class="badge bg-success">PELI</span>
+                                                            {% elif 'serie' in f.path.lower() %}
+                                                                <span class="badge bg-success">SERIE</span>
+                                                            {% else %}
+                                                                <span class="badge bg-success">Media</span>
+                                                            {% endif %}
+                                                        {% else %}
+                                                            <span class="badge bg-secondary">{{ f.location }}</span>
+                                                        {% endif %}
+                                                        {% if not loop.last %}, {% endif %}
+                                                    {% endfor %}
+                                                </td>
+                                                <td>
+                                                    {% set size_gb = version[0].size_mb / 1024 %}
+                                                    {% if size_gb >= 1 %}
+                                                        {{ '%.2f' % size_gb }} GB
+                                                    {% else %}
+                                                        {{ version[0].size_mb }} MB
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% set imported = version|selectattr('location', 'equalto', 'media')|list|length > 0 %}
+                                                    {% if imported %}
+                                                        <span class="badge bg-success">Sí</span>
+                                                    {% else %}
+                                                        <span class="badge bg-danger">No</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="alert alert-warning text-center">No se encontraron series.</div>
+                {% endif %}
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %} 

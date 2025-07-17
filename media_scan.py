@@ -71,10 +71,9 @@ def extract_title_year(filename: str):
         year = None
     return title, year
 
-def scan_media_dirs(downloads_dirs: list, media_dirs: list) -> list:
+def scan_video_files(downloads_dirs: list, media_dirs: list) -> list:
     """
-    Escanea los directorios de descargas y media, devolviendo una lista de archivos de vídeo con metadatos relevantes.
-    Añade los campos: original_title, year, clean_name (por ahora igual a original_title + año).
+    Escanea recursivamente los directorios de descargas y media, devolviendo una lista de archivos de vídeo con metadatos básicos.
     """
     results = []
     for base_dir, location in [
@@ -93,34 +92,43 @@ def scan_media_dirs(downloads_dirs: list, media_dirs: list) -> list:
                     except Exception:
                         continue  # Ignora archivos inaccesibles
                     size_mb = round(stat.st_size / (1024 * 1024), 1)
-                    quality, codec = extract_quality_codec(fname)
-                    original_title, year = extract_title_year(fname)
-                    # Consulta TMDB para obtener el nombre en inglés y año oficial
-                    tmdb_title, tmdb_year, tmdb_type = get_tmdb_english_title_year(original_title, year)
-                    if tmdb_title:
-                        if tmdb_year:
-                            clean_name = f"{tmdb_title} ({tmdb_year})"
-                        else:
-                            clean_name = tmdb_title
-                    else:
-                        if year:
-                            clean_name = f"{original_title} ({year})"
-                        else:
-                            clean_name = original_title
                     results.append({
                         'path': fpath,
                         'name': fname,
                         'inode': stat.st_ino,
                         'size_mb': size_mb,
                         'location': location,
-                        'quality': quality,
-                        'codec': codec,
-                        'original_title': original_title,
-                        'year': year,
-                        'clean_name': clean_name,
-                        'tmdb_type': tmdb_type,
                     })
     return results
+
+# Mock de formateo de títulos usando Ollama (simulado)
+def format_title_ollama_mock(filename: str) -> dict:
+    """
+    Simula una petición a Ollama para formatear el nombre del archivo.
+    Devuelve un dict con 'title', 'year', 'type' ('movie' o 'series').
+    """
+    # Regex simple para extraer título y año
+    m = re.search(r'^(.*?)[. _\-]*(19\d{2}|20\d{2})', filename)
+    if m:
+        title = m.group(1).replace('.', ' ').replace('_', ' ').strip()
+        year = int(m.group(2))
+        # Heurística simple: si contiene 'S0' o 'E0' es serie
+        if re.search(r'[Ss]\d{1,2}[Ee]\d{1,2}', filename):
+            ttype = 'series'
+        else:
+            ttype = 'movie'
+    else:
+        title = os.path.splitext(filename)[0].replace('.', ' ').replace('_', ' ').strip()
+        year = None
+        ttype = 'unknown'
+    return {'title': title, 'year': year, 'type': ttype}
+
+# Mock de traducción de títulos a inglés usando TMDB/IMDB (no hace nada por ahora)
+def translate_title_to_english_mock(title: str) -> str:
+    """
+    Simula la traducción de un título a inglés. Por ahora, retorna el título tal cual.
+    """
+    return title
 
 def mark_imported_files(files: list) -> list:
     """
@@ -143,3 +151,40 @@ def group_by_clean_name(downloads: list) -> dict:
         key = (f.get('tmdb_type') or 'unknown', f['clean_name'])
         groups.setdefault(key, []).append(f)
     return groups 
+
+def build_downloads_structure(downloads_dirs, media_dirs):
+    """
+    Escanea archivos, aplica formateo mock y agrupa por título y tipo (película/serie),
+    cada grupo contiene todas las versiones encontradas (agrupadas por inodo).
+    """
+    files = scan_video_files(downloads_dirs, media_dirs)
+    # Aplica formateo mock a cada archivo
+    for f in files:
+        fmt = format_title_ollama_mock(f['name'])
+        f['title'] = fmt['title']
+        f['year'] = fmt['year']
+        f['type'] = fmt['type']
+    # Agrupa por (type, title, year)
+    groups = {}
+    for f in files:
+        key = (f['type'], f['title'], f['year'])
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(f)
+    # Dentro de cada grupo, agrupa por inodo (versiones)
+    downloads = []
+    for (ttype, title, year), files_in_group in groups.items():
+        # Agrupa por inodo
+        versions = {}
+        for f in files_in_group:
+            inode = f['inode']
+            if inode not in versions:
+                versions[inode] = []
+            versions[inode].append(f)
+        downloads.append({
+            'type': ttype,
+            'title': title,
+            'year': year,
+            'versions': list(versions.values())  # cada versión es una lista de archivos con el mismo inodo
+        })
+    return downloads 

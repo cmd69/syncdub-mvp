@@ -8,7 +8,7 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from config import Config, DOWNLOADS_DIRS, MEDIA_DIRS
 from app.main import bp as main_bp
-from media_scan import scan_media_dirs, mark_imported_files, group_by_clean_name
+from media_scan import mark_imported_files
 from flask_login import LoginManager
 from app.models.database import init_db
 from app.models.user import User

@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, current_app, request, redirect, ur
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models.user import User
 from config import DOWNLOADS_DIRS, MEDIA_DIRS
-from media_scan import scan_media_dirs, mark_imported_files, group_by_clean_name
+from media_scan import mark_imported_files, build_downloads_structure
 
 bp = Blueprint('main', __name__)
 
@@ -47,10 +47,11 @@ def operations():
 @bp.route('/downloads')
 @login_required
 def downloads_view():
-    files = scan_media_dirs(DOWNLOADS_DIRS, MEDIA_DIRS)
-    downloads = mark_imported_files(files)
-    groups = group_by_clean_name(downloads)
-    return render_template('downloads.html', groups=groups)
+    downloads = build_downloads_structure(DOWNLOADS_DIRS, MEDIA_DIRS)
+    # Separa películas y series para el selector
+    movies = [d for d in downloads if d['type'] == 'movie']
+    series = [d for d in downloads if d['type'] == 'series']
+    return render_template('downloads.html', movies=movies, series=series)
 
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
